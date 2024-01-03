@@ -1,0 +1,85 @@
+#!/bin/bash
+SYS_PATH=/etc/aops
+OUT_PATH=/opt/aops/uwsgi
+UWSGI_LOG_DIR=/var/log/aops/uwsgi
+
+
+function check_uwsgi_path() {
+  if [ ! -d "$1" ];then
+    mkdir -p $1
+  fi
+}
+
+function check_file() {
+  if [ ! -e "$1" ]; then
+    touch "$1"
+  fi
+}
+
+function get_config() {
+  INIFILE=$1
+  SECTION=$2
+  ITEM=$3
+  awk -F '=' '/\['"$SECTION"'\]/{a=1}a==1&&$1~/'"$ITEM"'/{print $2; exit}' "$INIFILE"
+}
+
+function create_config_file() {
+  check_uwsgi_path $OUT_PATH
+  check_uwsgi_path $UWSGI_LOG_DIR
+
+  echo "[INFO] start to create uwsgi file"
+  config_file=$SYS_PATH/aops-cobbler.ini
+  service_name="cobbled"
+
+  dos2unix "${config_file}"
+
+  ip=$(get_config "${config_file}" "cobbler_client" "ip")
+  port=$(get_config "${config_file}" "cobbler_client" "port")
+  wsgi_file_name=$(get_config "${config_file}" "uwsgi" "wsgi-file")
+  wsgi_file=$(find /usr/lib/python*/site-packages -maxdepth 1 -name ${service_name} | head -n 1)
+  daemonize=$(get_config "${config_file}" "uwsgi" "daemonize")
+  http_timeout=$(get_config "${config_file}" "uwsgi" "http-timeout")
+  harakiri=$(get_config "${config_file}" "uwsgi" "harakiri")
+  processes=$(get_config "${config_file}" "uwsgi" "processes")
+  threads=$(get_config "${config_file}" "uwsgi" "threads")
+  gevent=$(get_config "${config_file}" "uwsgi" "gevent")
+
+  check_file $daemonize
+  echo "[INFO] run ${service_name} under path: ${wsgi_file}"
+
+  if [[ -z "${wsgi_file_name}" ]] || [[ -z "${ip}" ]] || [[ -z "${port}" ]]; then
+    echo "[ERROR] can not find  all config name in: ${config_file}, please check the file."
+    echo "[ERROR] the following config name is needed: ip, port and wsgi_file."
+    exit 1
+  fi
+  if [ -z "${wsgi_file}" ]; then
+    echo "[ERROR] can not find the ${service_name} path under: /usr/lib/"
+    exit 1
+  fi
+
+  echo "[uwsgi]
+http=${ip}:${port}
+chdir=${wsgi_file}
+module=${service_name}.manage
+uwsgi-file=${wsgi_file_name}
+pidfile=${OUT_PATH}/${service_name}.pid
+callable=app
+enable-threads=true
+http-timeout=${http_timeout}
+harakiri=${harakiri}
+processes=${processes}
+daemonize=${daemonize}" >"${OUT_PATH}"/"${service_name}".ini
+  if [ ${gevent} ]
+  then
+    echo "gevent=${gevent}
+gevent-monkey-patch=true" >>"${OUT_PATH}"/"${service_name}".ini
+  else
+    echo "threads=${threads}" >>"${OUT_PATH}"/"${service_name}".ini
+  fi
+  chown root: ${OUT_PATH}/"${service_name}".ini
+  chmod 750 ${OUT_PATH}/"${service_name}".ini
+  rm -rf ${OUT_PATH}/"${service_name}".pid
+  echo "[INFO] create ${service_name} uwsgi file ok,path is ${OUT_PATH}/${service_name}.ini"
+}
+
+create_config_file
