@@ -1,0 +1,5 @@
+[ISSEOS_Utils]
+name=ISSEOS_Utils
+baseurl=http://10.10.192.169:82/ISSEL:/22:/LTS/openEuler_22.03_LTS_$basearch/
+enabled=1
+gpgcheck=0

@@ -31,8 +31,6 @@ function create_config_file() {
   config_file=$SYS_PATH/aops-cobbler.ini
   service_name="cobbled"
 
-  dos2unix "${config_file}"
-
   ip=$(get_config "${config_file}" "cobbler_client" "ip")
   port=$(get_config "${config_file}" "cobbler_client" "port")
   wsgi_file_name=$(get_config "${config_file}" "uwsgi" "wsgi-file")

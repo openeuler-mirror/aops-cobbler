@@ -1,0 +1,232 @@
+{
+  "breeds": {
+    "redhat": {
+      "isseos-v22": {
+        "signatures": [
+          "Packages"
+        ],
+        "version_file": "ISSEOS-release-(.*).rpm",
+        "version_file_regex": null,
+        "kernel_arch": "kernel-(.*).rpm",
+        "kernel_arch_regex": null,
+        "supported_arches": [
+          "i386",
+          "ppc64",
+          "s390x",
+          "x86_64"
+        ],
+        "supported_repo_breeds": [
+          "rsync",
+          "rhn",
+          "yum"
+        ],
+        "kernel_file": "vmlinuz(.*)",
+        "initrd_file": "initrd(.*)\\.img",
+        "isolinux_ok": false,
+        "default_autoinstall": "sample.ks",
+        "kernel_options": "repo=$tree",
+        "kernel_options_post": "",
+        "boot_files": []
+      },
+      "rhel7": {
+        "signatures": [
+          "Packages"
+        ],
+        "version_file": "(redhat|sl|slf|anolis|centos|oraclelinux|vzlinux)-release-(?!notes)([\\w]*-)*7(Server)*[\\.-]+(.*)\\.rpm",
+        "version_file_regex": null,
+        "kernel_arch": "kernel-(.*).rpm",
+        "kernel_arch_regex": null,
+        "supported_arches": [
+          "aarch64",
+          "ppc64",
+          "ppc64le",
+          "s390x",
+          "x86_64"
+        ],
+        "supported_repo_breeds": [
+          "rsync",
+          "rhn",
+          "yum"
+        ],
+        "kernel_file": "vmlinuz(.*)",
+        "initrd_file": "initrd(.*)\\.img",
+        "isolinux_ok": false,
+        "default_autoinstall": "sample.ks",
+        "kernel_options": "",
+        "kernel_options_post": "",
+        "boot_files": [],
+        "boot_loaders": {
+          "ppc64": [
+            "grub"
+          ],
+          "ppc64le": [
+            "grub"
+          ]
+        }
+      },
+      "openEuler": {
+        "signatures": [
+          "Packages"
+        ],
+        "version_file": "openEuler-release-(.*).rpm",
+        "version_file_regex": null,
+        "kernel_arch": "kernel-(.*).rpm",
+        "kernel_arch_regex": null,
+        "supported_arches": [
+          "aarch64",
+          "ppc64le",
+          "s390x",
+          "x86_64"
+        ],
+        "supported_repo_breeds": [
+          "rsync",
+          "rhn",
+          "yum"
+        ],
+        "kernel_file": "vmlinuz(.*)",
+        "initrd_file": "initrd(.*)\\.img",
+        "isolinux_ok": false,
+        "default_autoinstall": "sample.ks",
+        "kernel_options": "repo=$tree",
+        "kernel_options_post": "",
+        "boot_files": []
+      },
+      "anolis": {
+        "signatures": [
+          "BaseOS/Packages"
+        ],
+        "version_file": "anolis-release-(.*).rpm",
+        "version_file_regex": null,
+        "kernel_arch": "kernel-(.*).rpm",
+        "kernel_arch_regex": null,
+        "supported_arches": [
+          "aarch64",
+          "ppc64le",
+          "s390x",
+          "x86_64"
+        ],
+        "supported_repo_breeds": [
+          "rsync",
+          "rhn",
+          "yum"
+        ],
+        "kernel_file": "vmlinuz(.*)",
+        "initrd_file": "initrd(.*)\\.img",
+        "isolinux_ok": false,
+        "default_autoinstall": "sample.ks",
+        "kernel_options": "repo=$tree",
+        "kernel_options_post": "",
+        "boot_files": []
+      },
+      "rhel9": {
+        "signatures": [
+          "BaseOS"
+        ],
+        "version_file": "(redhat|sl|slf|almalinux|anolis|centos|centos-linux|centos-stream|oraclelinux|rocky|vzlinux)-release-(?!notes)([\\w]*-)*9[\\.-]+(.*)\\.rpm",
+        "version_file_regex": null,
+        "kernel_arch": "kernel-(.*).rpm",
+        "kernel_arch_regex": null,
+        "supported_arches": [
+          "aarch64",
+          "ppc64le",
+          "s390x",
+          "x86_64"
+        ],
+        "supported_repo_breeds": [
+          "rsync",
+          "rhn",
+          "yum"
+        ],
+        "kernel_file": "vmlinuz(.*)",
+        "initrd_file": "initrd(.*)\\.img",
+        "isolinux_ok": false,
+        "default_autoinstall": "sample.ks",
+        "kernel_options": "",
+        "kernel_options_post": "",
+        "boot_files": []
+      },
+      "UnionTech": {
+        "signatures": [
+          "BaseOS/Packages"
+        ],
+        "version_file": "UnionTech-release-eula-20-1060a.uelc20.17.20230606.x86_64.rpm",
+        "version_file_regex": null,
+        "kernel_arch": "vzkernel-(.*).rpm",
+        "kernel_arch_regex": null,
+        "supported_arches": [
+          "i386",
+          "x86_64"
+        ],
+        "supported_repo_breeds": [
+          "rsync",
+          "yum"
+        ],
+        "kernel_file": "vmlinuz(.*)",
+        "initrd_file": "initrd(.*)\\.img",
+        "isolinux_ok": false,
+        "default_autoinstall": "sample.ks",
+        "kernel_options": "repo=$tree",
+        "kernel_options_post": "",
+        "boot_files": []
+      },
+      "NeoKylin": {
+        "signatures": [
+          "Packages"
+        ],
+        "version_file": "neokylin-release-(.*).rpm",
+        "version_file_regex": null,
+        "kernel_arch": "kernel-(.*)\\.rpm",
+        "kernel_arch_regex": null,
+        "supported_arches": [
+          "i386",
+          "x86_64",
+          "ppc",
+          "ppc64"
+        ],
+        "supported_repo_breeds": [
+          "rsync",
+          "rhn",
+          "yum"
+        ],
+        "kernel_file": "vmlinuz(.*)",
+        "initrd_file": "initrd(.*)\\.img",
+        "isolinux_ok": false,
+        "default_autoinstall": "sample.ks",
+        "kernel_options": "repo=$tree",
+        "kernel_options_post": "",
+        "boot_files": []
+      },
+      "BCLinux": {
+        "signatures": [
+          "Packages"
+        ],
+        "version_file": "bclinux-release-(.*).rpm",
+        "version_file_regex": null,
+        "kernel_arch": "kernel-(.*)\\.rpm",
+        "kernel_arch_regex": null,
+        "supported_arches": [
+          "arm",
+          "armhfp",
+          "i386",
+          "x86_64",
+          "ppc",
+          "ppc64",
+          "s390",
+          "s390x"
+        ],
+        "supported_repo_breeds": [
+          "rsync",
+          "rhn",
+          "yum"
+        ],
+        "kernel_file": "vmlinuz(.*)",
+        "initrd_file": "initrd(.*)\\.img",
+        "isolinux_ok": false,
+        "default_autoinstall": "sample.ks",
+        "kernel_options": "repo=$tree",
+        "kernel_options_post": "",
+        "boot_files": []
+      }
+    }
+  }
+}

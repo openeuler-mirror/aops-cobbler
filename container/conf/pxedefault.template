@@ -1,0 +1,9 @@
+DEFAULT menu
+PROMPT 0
+MENU TITLE Cobbler | https://cobbler.github.io
+TIMEOUT 100
+TOTALTIMEOUT 6000
+
+$pxe_menu_items
+
+MENU end
