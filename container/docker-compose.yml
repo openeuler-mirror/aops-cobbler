@@ -1,0 +1,17 @@
+version: '2'
+services:
+  cobbler:
+    build:
+      context: ./aops-cobbler
+      dockerfile: Dockerfile
+    container_name: aops-cobbler
+    network_mode: host
+    restart: always
+    privileged: true
+    command: /sbin/init
+    volumes:
+      - /etc/aops/aops-cobbler.ini:/etc/aops/aops-cobbler.ini
+      - /etc/cobbler/dhcp.template:/etc/cobbler/dhcp.template
+      - /etc/cobbler/settings:/etc/cobbler/settings
+      - /etc/cobbler/boot_loader_conf/pxedefault.template:/etc/cobbler/boot_loader_conf/pxedefault.template
+      - /var/lib/cobbler/distro_signatures.json:/var/lib/cobbler/distro_signatures.json
