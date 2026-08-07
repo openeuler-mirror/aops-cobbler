@@ -18,6 +18,7 @@ Description: Database proxy
 
 
 import sqlalchemy
+import uuid
 from sqlalchemy import func, desc
 from sqlalchemy.exc import SQLAlchemyError, DisconnectionError
 from sqlalchemy.orm import sessionmaker
@@ -117,7 +118,7 @@ class MysqlProxy:
             self.session.rollback()
             return False
 
-    def select(self, table, condition, page_no=1, page_size=10):
+    def select(self, table, condition, page_no=1, page_size=10, order_by=None):
         """
         Query data from table
 
@@ -126,14 +127,21 @@ class MysqlProxy:
             condition(set): query condition
             page_no: page no
             page_size: page size
+            order_by: SQLAlchemy column or expression to order by
 
         Returns:
             bool: query succeed or fail
         """
         try:
+            if order_by is None:
+                if hasattr(table, "update_time"):
+                    order_by = getattr(table, "update_time")
+                else:
+                    order_by = getattr(table, "host_id")
+
             data = (self.session.query(table)
                     .filter(*condition)
-                    .order_by(desc(getattr(table, "host_id")))
+                    .order_by(desc(order_by))
                     .offset((page_no - 1) * page_size)
                     .limit(page_size).all())
             return True, data
@@ -170,7 +178,10 @@ class MysqlProxy:
             bool: True or False
         """
         try:
-            self.session.bulk_save_objects(data_list)
+            for obj in data_list:
+                if getattr(obj, 'host_id', None) in (None, ''):
+                    setattr(obj, 'host_id', str(uuid.uuid4()))
+            self.session.add_all(data_list)
             self.session.commit()
             return True
         except sqlalchemy.exc.SQLAlchemyError as error:

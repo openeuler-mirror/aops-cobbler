@@ -86,7 +86,12 @@ class HostProxy(MysqlProxy):
             result["total_page"] = math.ceil(total_count / page_size)
             return True, result
 
-        query_result, hosts = self.select(RawHost, filters, page_no, page_size)
+        query_result, hosts = self.select(
+            RawHost,
+            filters,
+            page_no,
+            page_size,
+            order_by=RawHost.update_time if hasattr(RawHost, "update_time") else RawHost.host_id)
         if not query_result:
             return query_result, result
 

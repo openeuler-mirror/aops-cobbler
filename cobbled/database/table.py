@@ -20,7 +20,7 @@ Description: mysql tables
 from sqlalchemy import Column
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.sql.sqltypes import Integer, String
-
+import uuid
 Base = declarative_base()
 
 
@@ -49,7 +49,7 @@ class RawHost(Base, MyBase):  # pylint: disable=R0903
 
     __tablename__ = "raw_host"
 
-    host_id = Column(Integer(), primary_key=True, autoincrement=True)
+    host_id = Column(String(36), primary_key=True, nullable=False, default=lambda: str(uuid.uuid4()))
     host_name = Column(String(50), nullable=False)
     bmc_ip = Column(String(16), nullable=False)
     bmc_user_name = Column(String(128), nullable=False)

@@ -18,12 +18,13 @@ Description: Validate Util
 
 
 import os
+import re
+import uuid
 
 import validators
 
 from cobbled.conf import configuration
 from cobbled.conf.constant import ISOCons, KsCons, HostCons, ScriptCons
-import re
 
 from cobbled.util.aes_util import AesUtil
 from cobbled.util.response_util import ResUtil
@@ -97,9 +98,18 @@ class HostChecker:
 
     @staticmethod
     def check_host_id(host_id):
-        pattern = re.compile('^[1-9][0-9]*$')
-        # host_id不能为空，且必须是大于1的整数
-        if not pattern.match(str(host_id)):
+        if not host_id or not str(host_id).strip():
+            return ResUtil.failed(HostCons.CHECK_HOST_ID_TIPS)
+
+        host_id_str = str(host_id).strip()
+        pattern = re.compile(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-'
+                             r'[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$')
+        if not pattern.fullmatch(host_id_str):
+            return ResUtil.failed(HostCons.CHECK_HOST_ID_TIPS)
+
+        try:
+            uuid.UUID(host_id_str)
+        except (ValueError, TypeError):
             return ResUtil.failed(HostCons.CHECK_HOST_ID_TIPS)
 
     @staticmethod
