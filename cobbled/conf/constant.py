@@ -83,7 +83,7 @@ class HostCons:
     CHECK_HOST_EXITS_TIPS = "The host not exists."
     CHECK_HOST_NAME_TIPS = "The host_name can not be none and must comply with hostname rules."
     CHECK_HOST_MAC_TIPS = "The host_mac can not be none and must comply with mac rules."
-    CHECK_HOST_ID_TIPS = "The host_id can not be none and must be an integer greater than 0."
+    CHECK_HOST_ID_TIPS = "The host_id can not be none and must be a valid UUID string."
     CHECK_HOST_LIST_TIPS = "The host list can not be none and length must be less than 100."
     CHECK_BMC_IP_TIPS = "The bmc ip can not be none and must comply with IP rules."
     CHECK_BMC_USER_NAME_TIPS = "The bmc user name can not be none and length must be less than 128."
