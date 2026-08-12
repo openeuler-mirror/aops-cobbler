@@ -19,7 +19,7 @@ Description: mysql tables
 
 from sqlalchemy import Column
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.sql.sqltypes import Integer, String
+from sqlalchemy.sql.sqltypes import DateTime, Integer, String
 import uuid
 Base = declarative_base()
 
@@ -57,4 +57,5 @@ class RawHost(Base, MyBase):  # pylint: disable=R0903
     host_ip = Column(String(16), nullable=True)
     status = Column(Integer(), default=0)
     host_mac = Column(String(18), nullable=False)
+    created_time = Column(DateTime, nullable=True)
     update_time = Column(String(32), nullable=True)
