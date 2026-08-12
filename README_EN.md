@@ -14,7 +14,7 @@ An important service of the intelligent O&M platform A-Ops, providing automated 
 1. Clone this repository and development kits.
 
    ```shell
-   git clone https://atomgit.com/aops-cobbler.git
+   git clone https://atomgit.com/openeuler/aops-cobbler.git
    ```
 
 2. Open the project using PyCharm or other preferred development tools.
