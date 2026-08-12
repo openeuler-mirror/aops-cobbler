@@ -13,7 +13,7 @@
 1. 克隆此仓库与开发工具包
 
    ```
-   git clone https://gitee.com/aops-cobbler.git
+   git clone https://atomgit.com/aops-cobbler.git
    ```
 
 2. 使用PyCharm等开发工具打开该项目
