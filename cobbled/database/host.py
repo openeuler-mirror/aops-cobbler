@@ -103,6 +103,7 @@ class HostProxy(MysqlProxy):
                 "bmc_user_name": host.bmc_user_name,
                 "bmc_passwd": host.bmc_passwd,
                 "host_ip": host.host_ip,
+                "created_time": host.created_time.isoformat() if getattr(host, "created_time", None) else None,
                 "status": host.status,
                 "host_mac": host.host_mac
             }
