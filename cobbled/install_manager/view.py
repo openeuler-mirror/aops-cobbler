@@ -287,8 +287,11 @@ def host_scheduler():
 
     failed_hosts = []
     for host in hosts:
-        interval_time = datetime.now() - host.update_time
-        if interval_time.seconds < 300:
+        if host.update_time is None:
+            continue
+
+        interval_seconds = (datetime.now() - host.update_time).total_seconds()
+        if interval_seconds < 300:
             continue
 
         # 检查日志文件是否存在，如果5分钟后安装日志还未生成，则说明已经安装失败。
@@ -297,7 +300,7 @@ def host_scheduler():
         os_install_log_path = os.path.join(os_install_log_dir, host.host_name + "-" + str(host.host_id) + ".log")
         if not os.path.exists(os_install_log_path) \
                 or (datetime.now() - datetime.fromtimestamp(os.path.getmtime(os_install_log_path))).seconds > 120 \
-                or interval_time.seconds > os_installed_time * 60:
+                or interval_seconds > os_installed_time * 60:
             host_info = {
                 "host_id": host.host_id,
                 "status": 4
