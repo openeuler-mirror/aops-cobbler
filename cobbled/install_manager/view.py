@@ -344,13 +344,30 @@ class GetInstallLogFile(Resource):
 def distribute_ip(host_proxy, host_ip_list):
     start_ip = ipaddress.IPv4Address(os_start_ip)
     end_ip = ipaddress.IPv4Address(os_end_ip)
-    for ip_addr in range(int(start_ip), int(end_ip)):
-        if ip_addr in host_ip_list:
+
+    if start_ip > end_ip:
+        LOGGER.error("Invalid IP range: %s - %s", start_ip, end_ip)
+        return None
+
+    allocated_ips = set(host_ip_list)
+
+    for ip_int in range(int(start_ip), int(end_ip) + 1):
+        ip_str = str(ipaddress.IPv4Address(ip_int))
+
+        if ip_str in allocated_ips:
             continue
-        query_result, hosts = host_proxy.query_host_by_host_ip(str(ip_addr))
-        if not query_result or hosts:
+
+        query_result, hosts = host_proxy.query_host_by_host_ip(ip_str)
+        if not query_result:
+            LOGGER.error("Failed to query host IP: %s", ip_str)
+            return None
+
+        if hosts:
             continue
-        return str(ipaddress.IPv4Address(ip_addr))
+
+        return ip_str
+
+    return None
 
 
 def get_default_gateway(ip_addr, subnet_mask):
