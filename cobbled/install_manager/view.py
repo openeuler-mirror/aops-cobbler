@@ -299,7 +299,7 @@ def host_scheduler():
         # 如果安装时间已经超过了30分钟，状态依然是装机中，则按照安装失败来处理。
         os_install_log_path = os.path.join(os_install_log_dir, host.host_name + "-" + str(host.host_id) + ".log")
         if not os.path.exists(os_install_log_path) \
-                or (datetime.now() - datetime.fromtimestamp(os.path.getmtime(os_install_log_path))).seconds > 120 \
+                or (datetime.now() - datetime.fromtimestamp(os.path.getmtime(os_install_log_path))).total_seconds() > 120 \
                 or interval_seconds > os_installed_time * 60:
             host_info = {
                 "host_id": host.host_id,
