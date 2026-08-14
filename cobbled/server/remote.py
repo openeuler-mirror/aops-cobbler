@@ -47,5 +47,5 @@ class RemoteServer:
             token = remote_server.login(self.__user, self.__passwd)
             return remote_server, token
         except Exception as e:
-            LOGGER.error(e)
-            exit('URL:%s no access' % self.__server)
+            LOGGER.error(f"Connect cobbler server failed: {e}")
+            raise ConnectionError(f"Cobbler server {self.__server} is unreachable")
