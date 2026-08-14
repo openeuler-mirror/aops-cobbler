@@ -21,6 +21,7 @@ import ipaddress
 import json
 import os.path
 import subprocess
+import zipfile
 
 from flask_restful import Resource
 from flask import request, send_file
@@ -32,7 +33,7 @@ from cobbled.log.log import LOGGER
 from cobbled.server.remote import RemoteServer
 from cobbled.util.aes_util import AesUtil
 from cobbled.util.response_util import ResUtil
-from cobbled.util.validate_util import ISOChecker, KsChecker, InstallChecker, HostChecker
+from cobbled.util.validate_util import ISOChecker, KsChecker, InstallChecker, HostChecker, run_ipmitool
 from cobbled.util.file_util import FileUtil
 
 from datetime import datetime
@@ -182,11 +183,13 @@ class AutoInstall(Resource):
                     continue
 
                 # 18，调用ipmitool命令设置服务器由PXE启动，并下发主机开机或者重启指令
-                ipmi_command = "ipmitool -H " + host.get("bmc_ip") + " -I lanplus -U " + host.get("bmc_user_name") \
-                               + " -P '" + AesUtil.decrypt(host.get("bmc_passwd")) + "'"
                 ipmi_log = 'ipmitool -H ' + host.get("bmc_ip") + ' -I lanplus -U ' + host.get("bmc_user_name")
+                bmc_passwd = AesUtil.decrypt(host.get("bmc_passwd"))
 
-                if os.system(ipmi_command + ' chassis bootdev pxe') or os.system(ipmi_command + ' power reset'):
+                if run_ipmitool(host.get("bmc_ip"), host.get("bmc_user_name"), bmc_passwd,
+                                "chassis", "bootdev", "pxe") or \
+                        run_ipmitool(host.get("bmc_ip"), host.get("bmc_user_name"), bmc_passwd,
+                                     "power", "reset"):
                     LOGGER.error(ipmi_log + '' + InstallCons.IPMI_COMMAND_EXECUTE_TIPS)
                     host["reason"] = InstallCons.IPMI_COMMAND_EXECUTE_TIPS
                     continue
@@ -333,8 +336,10 @@ class GetInstallLogFile(Resource):
             return ResUtil.failed(InstallCons.CHECK_LOG_FILE_EXITS_TIPS)
 
         # 对日志文件进行压缩
-        os.system("cd " + os_install_log_dir + "&& zip -r " + log_file_name + ".zip " + log_file_name + ".log")
-        os_install_log_path = os.path.join(os_install_log_dir, log_file_name + ".zip")
+        archive_path = os.path.join(os_install_log_dir, log_file_name + ".zip")
+        with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.write(os_install_log_path, arcname=log_file_name + ".log")
+        os_install_log_path = archive_path
 
         response = send_file(os_install_log_path, mimetype="application/octet-stream")
         response.headers['Content-Disposition'] = 'attachment; filename=' + log_file_name + '.zip'

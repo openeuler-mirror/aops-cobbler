@@ -19,6 +19,7 @@ Description: Validate Util
 
 import os
 import re
+import subprocess
 import uuid
 
 import validators
@@ -28,6 +29,19 @@ from cobbled.conf.constant import ISOCons, KsCons, HostCons, ScriptCons
 
 from cobbled.util.aes_util import AesUtil
 from cobbled.util.response_util import ResUtil
+
+
+def run_ipmitool(bmc_ip, bmc_user_name, bmc_passwd, *command):
+    """Run ipmitool without passing untrusted BMC values through a shell."""
+    try:
+        result = subprocess.run([
+            "ipmitool", "-H", bmc_ip, "-I", "lanplus",
+            "-U", bmc_user_name, "-P", bmc_passwd,
+            *command
+        ])
+    except OSError:
+        return 1
+    return result.returncode
 
 
 class ISOChecker:
@@ -153,8 +167,7 @@ class HostChecker:
         bmc_ip = host.get("bmc_ip")
         bmc_user_name = host.get("bmc_user_name")
         bmc_passwd = AesUtil.decrypt(host.get("bmc_passwd"))
-        ipmi_command = "ipmitool -H " + bmc_ip + " -I lanplus -U " + bmc_user_name + " -P '" + bmc_passwd + "'"
-        if os.system(ipmi_command + ' power status'):
+        if run_ipmitool(bmc_ip, bmc_user_name, bmc_passwd, "power", "status"):
             return ResUtil.failed(HostCons.CHECK_BMC_CONNECTION_TIPS)
 
     @staticmethod
