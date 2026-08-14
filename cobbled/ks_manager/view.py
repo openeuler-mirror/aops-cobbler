@@ -17,7 +17,6 @@ Description: Restful APIs for kickstart manager
 """
 
 
-import json
 import os.path
 import subprocess
 
@@ -153,4 +152,4 @@ class QueryKickstart(Resource):
         # 按照文件修改时间进行降序排列
         ks_arr = sorted(ks_arr, key=lambda x: os.path.getmtime(os.path.join(ks_dir, x.get("ks_name"))), reverse=True)
         LOGGER.info("end to query kickstart file")
-        return json.loads(json.dumps(ks_arr))
+        return ks_arr

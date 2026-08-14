@@ -18,7 +18,6 @@ Description: Restful APIs for auto install os
 
 
 import ipaddress
-import json
 import os.path
 import subprocess
 
@@ -227,7 +226,7 @@ class AutoInstall(Resource):
             msg = str(e)
 
         LOGGER.info("end to auto install")
-        return ResUtil.success_or_failed(code, msg, json.loads(json.dumps(result_list)))
+        return ResUtil.success_or_failed(code, msg, result_list)
 
 
 class Notify(Resource):
