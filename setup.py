@@ -33,7 +33,7 @@ setup(
         'cryptography',
         'uWSGI',
         'PyMySQL',
-        'sqlalchemy'
+        'sqlalchemy',
         'concurrent-log-handler'
     ],
     author='cmd-lsw-yyy-zyc',
