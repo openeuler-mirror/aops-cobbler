@@ -59,7 +59,7 @@ class HostCons:
     # host template file content
     HOST_TEMPLATE_FILE_CONTENT = """host_name,host_mac,bmc_ip,bmc_user_name,bmc_passwd
     test-host1,18:56:44:21:db:ef,10.10.10.1,admin,123456
-    test-host2,18:56:44:21:db:ed,10.10.10.2,admin,123456,
+    test-host2,18:56:44:21:db:ed,10.10.10.2,admin,123456
     """
 
     ADD_HOST_FAILED_TIPS = "The host add failed."
