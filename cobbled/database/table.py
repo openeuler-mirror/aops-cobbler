@@ -58,4 +58,4 @@ class RawHost(Base, MyBase):  # pylint: disable=R0903
     status = Column(Integer(), default=0)
     host_mac = Column(String(18), nullable=False)
     created_time = Column(DateTime, nullable=True)
-    update_time = Column(String(32), nullable=True)
+    update_time = Column(DateTime, nullable=True)
