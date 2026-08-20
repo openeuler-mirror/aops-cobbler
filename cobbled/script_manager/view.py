@@ -17,7 +17,6 @@ Description: Restful APIs for script manager
 """
 
 
-import json
 import os
 import subprocess
 from io import SEEK_END
@@ -117,7 +116,7 @@ class QueryScript(Resource):
         script_arr = sorted(script_arr, key=lambda x: os.path.getmtime(os.path.join(upload_dir, x.get("script_name"))),
                             reverse=True)
         LOGGER.info("end to query script file")
-        return json.loads(json.dumps(script_arr))
+        return script_arr
 
 
 class DeleteScript(Resource):

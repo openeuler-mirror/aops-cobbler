@@ -17,7 +17,6 @@ Description: Restful APIs for iso manager
 """
 
 
-import json
 import os
 
 from flask_restful import Resource
@@ -124,7 +123,7 @@ class QueryISO(Resource):
                 rep_arr.append(rep_data)
         except Exception as e:
             LOGGER.error(f'fail to query iso file:{str(e)}')
-        return json.loads(json.dumps(rep_arr))
+        return rep_arr
 
 
 class DeleteISO(Resource):
