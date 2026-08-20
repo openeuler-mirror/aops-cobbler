@@ -102,7 +102,7 @@ default_name_servers_search: []
 
 # if using the authz_ownership module (see the Wiki), objects
 # created without specifying an owner are assigned to this
-# owner and/or group.  Can be a comma seperated list.
+# owner and/or group.  Can be a comma-separated list.
 default_ownership:
  - "admin"
 
@@ -129,7 +129,7 @@ default_template_type: "cheetah"
 # for libvirt based installs in koan, if no virt bridge
 # is specified, which bridge do we try?  For EL 4/5 hosts
 # this should be xenbr0, for all versions of Fedora, try
-# "virbr0".  This can be overriden on a per-profile
+# "virbr0".  This can be overridden on a per-profile
 # basis or at the koan command line though this saves
 # typing to just set it here to the most common option.
 default_virt_bridge: xenbr0
@@ -188,7 +188,7 @@ ldap_tls_certfile: ''
 
 # cobbler has a feature that allows for integration with config management
 # systems such as Puppet.  The following parameters work in conjunction with
-# --mgmt-classes  and are described in furhter detail at:
+# --mgmt-classes  and are described in further detail at:
 # https://github.com/cobbler/cobbler/wiki/Using-cobbler-with-a-configuration-management-system
 mgmt_classes: []
 mgmt_parameters:
@@ -235,7 +235,7 @@ remove_old_puppet_certs_automatically: 0
 manage_dhcp: 1
 
 # set to 1 to enable Cobbler's DNS management features.
-# the choice of DNS mangement engine is in /etc/cobbler/modules.conf
+# the choice of DNS management engine is in /etc/cobbler/modules.conf
 manage_dns: 0
 
 # set to path of bind chroot to create bind-chroot compatible bind
@@ -247,7 +247,7 @@ bind_chroot_path: ""
 bind_master: 127.0.0.1
 
 # set to 1 to enable Cobbler's TFTP management features.
-# the choice of TFTP mangement engine is in /etc/cobbler/modules.conf
+# the choice of TFTP management engine is in /etc/cobbler/modules.conf
 manage_tftpd: 1
 
 # This variable contains the location of the tftpboot directory. If this directory is not present cobbler does not
@@ -301,7 +301,7 @@ redhat_management_server: "xmlrpc.rhn.redhat.com"
 # of cobbler's configuration.
 # these roles are:  config_admin and org_admin
 # users should turn this on only if they want this behavior and
-# do not have a cross-multi-org seperation concern.  If you have
+# do not have a cross-multi-org separation concern.  If you have
 # a single org in your satellite, it's probably safe to turn this
 # on and then you can use CobblerWeb alongside a Satellite install.
 redhat_management_permissive: 0
@@ -352,7 +352,7 @@ run_install_triggers: 1
 # enables a trigger which version controls all changes to /var/lib/cobbler
 # when add, edit, or sync events are performed.  This can be used
 # to revert to previous database versions, generate RSS feeds, or for
-# other auditing or backup purposes. "git" and "hg" are currently suported,
+# other auditing or backup purposes. "git" and "hg" are currently supported,
 # but git is the recommend SCM for use with this feature.
 scm_track_enabled: 0
 scm_track_mode: "git"
@@ -419,7 +419,7 @@ xmlrpc_port: 25151
 # who have a dual homed cobbler server, or are installing laptops that
 # will not always have access to the cobbler server may wish to leave
 # this as 0.  In that case, the cobbler mirrored yum repos are still
-# accessable at http://cobbler.example.org/cblr/repo_mirror and yum
+# accessible at http://cobbler.example.org/cblr/repo_mirror and yum
 # configuration can still be done manually.  This is just a shortcut.
 yum_post_install_mirror: 1
 
