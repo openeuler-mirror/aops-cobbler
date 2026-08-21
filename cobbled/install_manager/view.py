@@ -87,9 +87,10 @@ class AutoInstall(Resource):
                 return ResUtil.failed(KsCons.CHECK_KS_EXITS_TIPS)
 
             # 4，如果脚本名称不为空，则校验脚本文件是否存在
-            script_full_path = os.path.join(script_dir, script_name + ".sh")
-            if script_name and not os.path.exists(script_full_path):
-                return ResUtil.failed(ScriptCons.CHECK_SCRIPT_EXITS_TIPS)
+            if script_name:
+                script_full_path = os.path.join(script_dir, script_name + ".sh")
+                if not os.path.exists(script_full_path):
+                    return ResUtil.failed(ScriptCons.CHECK_SCRIPT_EXITS_TIPS)
 
             # 5，如果install_rpm不为空，则检查rpm包是否存在
             if install_rpm:
