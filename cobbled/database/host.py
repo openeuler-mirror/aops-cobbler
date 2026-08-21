@@ -40,7 +40,7 @@ class HostProxy(MysqlProxy):
         Returns:
             bool: True or False
         """
-        params["bmc_passwd"] = AesUtil.encrypy(params["bmc_passwd"])
+        params["bmc_passwd"] = AesUtil.encrypt(params["bmc_passwd"])
         return self.insert(RawHost, params)
 
     def add_host_batch(self, host_list) -> bool:
