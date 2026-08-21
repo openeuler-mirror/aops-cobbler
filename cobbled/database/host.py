@@ -19,6 +19,9 @@ Description:
 
 import math
 
+from sqlalchemy import or_
+from sqlalchemy.exc import SQLAlchemyError
+
 from cobbled.database.proxy import MysqlProxy
 from cobbled.database.table import RawHost
 from cobbled.log.log import LOGGER
@@ -174,6 +177,22 @@ class HostProxy(MysqlProxy):
             bool: query succeed or fail
         """
         return self.select(RawHost, {RawHost.host_ip == host_ip})
+
+    def query_existing_identities(self, bmc_ips: set, host_macs: set):
+        """Query existing BMC IPs and host MACs in one database round trip."""
+        if not bmc_ips and not host_macs:
+            return True, []
+
+        host_macs = {host_mac.lower() for host_mac in host_macs}
+        try:
+            hosts = (self.session.query(RawHost.bmc_ip, RawHost.host_mac)
+                     .filter(or_(RawHost.bmc_ip.in_(bmc_ips),
+                                 RawHost.host_mac.in_(host_macs)))
+                     .all())
+            return True, hosts
+        except SQLAlchemyError as error:
+            LOGGER.error(error)
+            return False, []
 
     def delete_host(self, host_list: list):
         """
