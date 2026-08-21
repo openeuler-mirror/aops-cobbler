@@ -76,38 +76,54 @@ class BatchAddHost(Resource):
         # 校验通过的hosts
         check_ok_list = []
 
-        # 校验失败或者bmc ip重复或者host_mac重复的hosts
+        # 校验失败或者bmc ip重复或者host_mac重复的hosts，保留原始顺序
         check_failed_list = []
-
-        # 记录bmc ip list，用来校验bmc ip是否重复
-        bmc_ip_list = []
-
-        # 记录host mac list，用来校验host mac是否重复
-        host_mac_list = []
 
         # 用于入库的host list
         data_list = []
 
         host_proxy = HostProxy()
+        valid_hosts = []
 
-        for host in host_list:
+        for index, host in enumerate(host_list):
             check_result = check_host_params(host)
             if check_result:
                 host["result"] = "failed"
                 host["reason"] = check_result.json["msg"]
-                check_failed_list.append(host)
+                check_failed_list.append((index, host))
                 continue
+            valid_hosts.append((index, host))
 
-            if host["host_mac"] in host_mac_list or check_host_mac_duplicated(host_proxy, host):
+        query_result, existing_hosts = host_proxy.query_existing_identities(
+            {host["bmc_ip"] for _, host in valid_hosts},
+            {host["host_mac"] for _, host in valid_hosts})
+        if not query_result:
+            for index, host in valid_hosts:
+                host["result"] = "failed"
+                host["reason"] = HostCons.QUERY_HOST_FAILED_TIPS
+                check_failed_list.append((index, host))
+            check_failed_list.sort(key=lambda item: item[0])
+            return ResUtil.failed(
+                HostCons.BATCH_ADD_HOST_FAILED_TIPS,
+                {"result": [host for _, host in check_failed_list]})
+
+        existing_bmc_ips = {host.bmc_ip for host in existing_hosts}
+        existing_host_macs = {host.host_mac.lower() for host in existing_hosts}
+        bmc_ips = set()
+        host_macs = set()
+
+        for index, host in valid_hosts:
+            host_mac = host["host_mac"].lower()
+            if host_mac in host_macs or host_mac in existing_host_macs:
                 host["result"] = "failed"
                 host["reason"] = HostCons.HOST_MAC_DUPLICATED_TIPS
-                check_failed_list.append(host)
+                check_failed_list.append((index, host))
                 continue
 
-            if host["bmc_ip"] in bmc_ip_list or check_bmc_ip_duplicated(host_proxy, host):
+            if host["bmc_ip"] in bmc_ips or host["bmc_ip"] in existing_bmc_ips:
                 host["result"] = "failed"
                 host["reason"] = HostCons.BMC_IP_DUPLICATED_TIPS
-                check_failed_list.append(host)
+                check_failed_list.append((index, host))
                 continue
 
             bmc_passwd = host["bmc_passwd"]
@@ -117,9 +133,12 @@ class BatchAddHost(Resource):
             host["result"] = "succeed"
             host["reason"] = ""
             host["bmc_passwd"] = bmc_passwd
-            bmc_ip_list.append(host["bmc_ip"])
-            host_mac_list.append(host["host_mac"])
+            bmc_ips.add(host["bmc_ip"])
+            host_macs.add(host_mac)
             check_ok_list.append(host)
+
+        check_failed_list.sort(key=lambda item: item[0])
+        check_failed_list = [host for _, host in check_failed_list]
 
         # 数据批量入库
         result = host_proxy.add_host_batch(data_list)
