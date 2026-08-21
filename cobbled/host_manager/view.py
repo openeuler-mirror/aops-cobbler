@@ -111,7 +111,7 @@ class BatchAddHost(Resource):
                 continue
 
             bmc_passwd = host["bmc_passwd"]
-            host["bmc_passwd"] = AesUtil.encrypy(bmc_passwd)
+            host["bmc_passwd"] = AesUtil.encrypt(bmc_passwd)
             data_list.append(RawHost(**host))
 
             host["result"] = "succeed"
@@ -163,7 +163,7 @@ class UpdateHost(Resource):
             return check_result
 
         if hosts[0].bmc_passwd != request.json.get("bmc_passwd"):
-            request.json["bmc_passwd"] = AesUtil.encrypy(request.json["bmc_passwd"])
+            request.json["bmc_passwd"] = AesUtil.encrypt(request.json["bmc_passwd"])
 
         if not host_proxy.update_host_info(request.json):
             return ResUtil.failed(HostCons.UPDATE_HOST_FAILED_TIPS)

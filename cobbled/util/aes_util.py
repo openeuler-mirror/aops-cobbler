@@ -27,7 +27,7 @@ cipher_suite = Fernet(ConfigCons.AES_KEY)
 class AesUtil:
 
     @staticmethod
-    def encrypy(plaintext):
+    def encrypt(plaintext):
         # 加密明文
         return cipher_suite.encrypt(bytes(plaintext, 'utf-8')).decode()
 
