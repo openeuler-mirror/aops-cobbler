@@ -30,12 +30,13 @@ def calculate_iso_sha256(file_path):
 
 
 def write_iso_sha256(file_path, sha256_code):
-    with open(file_path, 'w') as file:
+    with open(file_path, 'w', encoding='utf-8') as file:
         file.write(sha256_code)
 
 
 def read_iso_sha256(file_path):
+    content = ''
     if os.path.exists(file_path):
-        with open(file_path, 'r') as f:
+        with open(file_path, 'r', encoding='utf-8') as f:
             content = f.read()
     return content
