@@ -24,21 +24,21 @@ class ResUtil:
 
     @staticmethod
     def success(msg: str, data=None):
-        if data:
+        if data is not None:
             return jsonify({'code': 200, 'msg': msg, 'data': data})
         else:
             return jsonify({'code': 200, 'msg': msg})
 
     @staticmethod
     def failed(msg: str, data=None):
-        if data:
+        if data is not None:
             return jsonify({'code': 400, 'msg': msg, 'data': data})
         else:
             return jsonify({'code': 400, 'msg': msg})
 
     @staticmethod
     def success_or_failed(code: int, msg: str, data=None):
-        if data:
+        if data is not None:
             return jsonify({'code': code, 'msg': msg, 'data': data})
         else:
             return jsonify({'code': code, 'msg': msg})
