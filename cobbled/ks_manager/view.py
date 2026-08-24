@@ -19,6 +19,7 @@ Description: Restful APIs for kickstart manager
 
 import os.path
 import subprocess
+import tempfile
 
 from flask_restful import Resource
 from flask import request
@@ -50,15 +51,17 @@ class AddKickstart(Resource):
         if check_ks_result:
             return check_ks_result
 
+        # 使用系统临时文件校验ks文件是否有语法错误
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.ks', encoding='utf-8') as temp_file:
+            temp_file.write(ks_content)
+            temp_file.flush()
+            check_ks_result = subprocess.run(['ksvalidator', temp_file.name], capture_output=True, text=True)
+            if check_ks_result.returncode:
+                return ResUtil.failed(check_ks_result.stderr)
+
         # 写入ks文件
         ks_full_path = os.path.join(ks_dir, ks_name + ".ks")
         FileUtil.write_file_content(ks_full_path, ks_content)
-
-        # 使用ksvalidator命令校验ks文件是否有语法错误
-        check_ks_result = subprocess.run(['ksvalidator', ks_full_path], capture_output=True, text=True)
-        if check_ks_result.returncode:
-            os.remove(ks_full_path)
-            return ResUtil.failed(check_ks_result.stderr)
 
         LOGGER.info("end to add kickstart file")
         return ResUtil.success(KsCons.ADD_KS_SUCCESS_TIPS)
@@ -84,15 +87,13 @@ class UpdateKickstart(Resource):
         if not os.path.exists(ks_full_path):
             return ResUtil.failed(KsCons.CHECK_KS_EXITS_TIPS)
 
-        # 先写入临时文件
-        ks_full_path_temp = os.path.join(ks_dir, ks_name + "_temp.ks")
-        FileUtil.write_file_content(ks_full_path_temp, ks_content)
-
-        # 使用ksvalidator命令校验ks文件是否有语法错误
-        check_ks_result = subprocess.run(['ksvalidator', ks_full_path_temp], capture_output=True, text=True)
-        os.remove(ks_full_path_temp)
-        if check_ks_result.returncode:
-            return ResUtil.failed(check_ks_result.stderr)
+        # 使用系统临时文件校验ks文件是否有语法错误
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.ks', encoding='utf-8') as temp_file:
+            temp_file.write(ks_content)
+            temp_file.flush()
+            check_ks_result = subprocess.run(['ksvalidator', temp_file.name], capture_output=True, text=True)
+            if check_ks_result.returncode:
+                return ResUtil.failed(check_ks_result.stderr)
 
         # 更新ks文件
         FileUtil.write_file_content(ks_full_path, ks_content)
