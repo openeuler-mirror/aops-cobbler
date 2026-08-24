@@ -35,8 +35,8 @@ class TestCommandInjectionRegressions(unittest.TestCase):
     def tearDown(self):
         self.app_context.pop()
 
-    def test_install_log_archive_does_not_invoke_a_shell(self):
-        log_file_name = "host;touch command-injected;#"
+    def test_install_log_archive_does_not_invoke_a_shell_and_streams_in_memory(self):
+        log_file_name = "host-test-12345"
 
         with tempfile.TemporaryDirectory() as log_dir:
             log_path = os.path.join(log_dir, log_file_name + ".log")
@@ -51,8 +51,40 @@ class TestCommandInjectionRegressions(unittest.TestCase):
 
             system.assert_not_called()
             self.assertEqual(response.status_code, 200)
-            with zipfile.ZipFile(os.path.join(log_dir, log_file_name + ".zip")) as archive:
+            # Ensure no zip file is created or left on disk
+            self.assertFalse(os.path.exists(os.path.join(log_dir, log_file_name + ".zip")))
+            # Verify the response body is a valid zip stream containing the log file
+            import io
+            stream_data = b"".join(response.response)
+            with zipfile.ZipFile(io.BytesIO(stream_data)) as archive:
                 self.assertEqual(archive.namelist(), [log_file_name + ".log"])
+                self.assertEqual(archive.read(log_file_name + ".log").decode("utf-8"), "installation log")
+
+    def test_install_log_rejects_path_traversal(self):
+        with tempfile.TemporaryDirectory() as log_dir:
+            # Create a file outside or in log_dir
+            traversal_payloads = [
+                "../../etc/passwd",
+                "../sensitive",
+                "/etc/passwd",
+                "subdir/test",
+                "test/../../etc",
+            ]
+            for payload in traversal_payloads:
+                with self.app.test_request_context(
+                        json={"log_file_name": payload}), \
+                        patch.object(install_view, "os_install_log_dir", log_dir):
+                    response = install_view.GetInstallLogFile().post()
+                self.assertEqual(response.json["code"], 400)
+
+    def test_install_log_rejects_empty_name(self):
+        with tempfile.TemporaryDirectory() as log_dir:
+            for empty_val in ["", "   ", None]:
+                with self.app.test_request_context(
+                        json={"log_file_name": empty_val}), \
+                        patch.object(install_view, "os_install_log_dir", log_dir):
+                    response = install_view.GetInstallLogFile().post()
+                self.assertEqual(response.json["code"], 400)
 
     def test_bmc_connection_passes_untrusted_values_as_atomic_arguments(self):
         host = {

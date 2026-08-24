@@ -17,6 +17,7 @@ Description: Restful APIs for auto install os
 """
 
 
+from io import BytesIO
 import ipaddress
 import os.path
 import subprocess
@@ -329,23 +330,41 @@ class GetInstallLogFile(Resource):
 
     def post(self):
         # 获取请求参数
-        log_file_name = request.json.get("log_file_name")
-        if not log_file_name:
+        if not request.json:
             return ResUtil.failed(InstallCons.CHECK_LOG_FILE_NAME_TIPS)
 
-        os_install_log_path = os.path.join(os_install_log_dir, log_file_name + ".log")
-        # 检查日志文件是否存在
-        if not os.path.exists(os_install_log_path):
+        log_file_name = request.json.get("log_file_name")
+        if not log_file_name or not isinstance(log_file_name, str) or not log_file_name.strip():
+            return ResUtil.failed(InstallCons.CHECK_LOG_FILE_NAME_TIPS)
+
+        log_file_name = log_file_name.strip()
+        # 防御路径遍历：禁止包含目录分隔符或路径穿越字符
+        if os.path.basename(log_file_name) != log_file_name or ".." in log_file_name or "/" in log_file_name or "\\" in log_file_name:
             return ResUtil.failed(InstallCons.CHECK_LOG_FILE_EXITS_TIPS)
 
-        # 对日志文件进行压缩
-        archive_path = os.path.join(os_install_log_dir, log_file_name + ".zip")
-        with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as archive:
-            archive.write(os_install_log_path, arcname=log_file_name + ".log")
-        os_install_log_path = archive_path
+        expected_base_dir = os.path.abspath(os_install_log_dir)
+        os_install_log_path = os.path.abspath(os.path.join(expected_base_dir, log_file_name + ".log"))
 
-        response = send_file(os_install_log_path, mimetype="application/octet-stream")
-        response.headers['Content-Disposition'] = 'attachment; filename=' + log_file_name + '.zip'
+        # 校验解析后的路径是否严格在目标日志目录范围内
+        try:
+            common = os.path.commonpath([expected_base_dir, os_install_log_path])
+            if common != expected_base_dir or os_install_log_path == expected_base_dir:
+                return ResUtil.failed(InstallCons.CHECK_LOG_FILE_EXITS_TIPS)
+        except ValueError:
+            return ResUtil.failed(InstallCons.CHECK_LOG_FILE_EXITS_TIPS)
+
+        # 检查日志文件是否存在
+        if not os.path.exists(os_install_log_path) or not os.path.isfile(os_install_log_path):
+            return ResUtil.failed(InstallCons.CHECK_LOG_FILE_EXITS_TIPS)
+
+        # 对日志文件进行内存中压缩，避免在磁盘产生临时文件堆积
+        zip_buffer = BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.write(os_install_log_path, arcname=log_file_name + ".log")
+        zip_buffer.seek(0)
+
+        response = send_file(zip_buffer, mimetype="application/octet-stream")
+        response.headers['Content-Disposition'] = f'attachment; filename={log_file_name}.zip'
         return response
 
 

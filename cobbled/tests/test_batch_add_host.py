@@ -112,7 +112,7 @@ class TestBatchAddHost(unittest.TestCase):
             stack.enter_context(patch.object(
                 view, "check_host_params", return_value=None, side_effect=check_side_effect))
             if encrypt:
-                stack.enter_context(patch.object(view.AesUtil, "encrypy", return_value="encrypted"))
+                stack.enter_context(patch.object(view.AesUtil, "encrypt", return_value="encrypted"))
             return view.BatchAddHost().post()
 
     @staticmethod

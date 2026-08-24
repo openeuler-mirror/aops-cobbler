@@ -42,7 +42,10 @@ class Config:
             for config in dir(default):
                 setattr(self, config, getattr(default, config))
 
-        self.read_config(config_file)
+        if os.path.exists(config_file):
+            self.read_config(config_file)
+        elif default is None:
+            raise RuntimeError(f"Configuration file does not exist: {config_file}")
 
     def _load_conf(self, config_file):
         if not os.path.exists(config_file):

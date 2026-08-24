@@ -34,8 +34,11 @@ class Logger:
         Class instance initialization.
         """
         log_dir = configuration.log.get("LOG_DIR")
-        if not os.path.exists(log_dir):
-            os.makedirs(log_dir, mode=0o644)
+        try:
+            if not os.path.exists(log_dir):
+                os.makedirs(log_dir, mode=0o755)
+        except OSError:
+            pass
 
         self.__log_name = os.path.join(log_dir, "aops-cobbler.log")
         self.__log_level = configuration.log.get("LOG_LEVEL")
@@ -123,8 +126,13 @@ class Logger:
         """
         logger = self.__create_logger()
 
-        logger.addHandler(self.__console_logger())
-        logger.addHandler(self.__file_rotate_logger())
+        if not logger.handlers:
+            logger.addHandler(self.__console_logger())
+            if os.path.exists(os.path.dirname(self.__log_name)):
+                try:
+                    logger.addHandler(self.__file_rotate_logger())
+                except OSError:
+                    pass
 
         return logger
 
