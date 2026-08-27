@@ -9,7 +9,7 @@ Source0:	%{name}-%{version}.tar.gz
 
 BuildRequires:  python3-setuptools
 Requires:   python3-flask python3-flask-restful python3-gevent python3-cryptography
-Requires:   python3-requests python3-uWSGI python3-werkzeug python3-Flask-APScheduler
+Requires:   python3-uWSGI python3-werkzeug python3-Flask-APScheduler
 Requires:   python3-PyMySQL python3-sqlalchemy python3-concurrent-log-handler
 Provides:   aops-cobbler
 Conflicts:  aops-manager
