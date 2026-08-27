@@ -131,8 +131,7 @@ class InstallCons:
     MODIFY_PXE_LINUX_DEFAULT_TIPS = "Modify pxe linux default file to add inst error."
     NO_AVAILABLE_IP_LEFT_TIPS = "There are no available IP resources left"
 
-    MODIFY_PXE_LINUX_DEFAULT_CMD = "cd /var/lib/tftpboot/pxelinux.cfg/ && sed -i 's/ks=/inst.ks=/g' * && sed -i " \
-                                   "'s/repo=/inst.repo=/g' * && sed -i 's/kssendmac/inst.kssendmac/g' *"
+    PXE_CONFIG_DIR = "/var/lib/tftpboot/pxelinux.cfg"
     INSTALL_LOG_FORWARD_CMD = "\nlogging --host=ip_addr\n"
 
 

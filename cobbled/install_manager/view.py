@@ -17,26 +17,32 @@ Description: Restful APIs for auto install os
 """
 
 
-from io import BytesIO
 import ipaddress
 import os.path
+import re
 import subprocess
 import zipfile
+from datetime import datetime
+from io import BytesIO
 
-from flask_restful import Resource
 from flask import request, send_file
+from flask_restful import Resource
 
 from cobbled.conf import configuration
-from cobbled.conf.constant import InstallCons, HostCons, KsCons, ScriptCons
+from cobbled.conf.constant import HostCons, InstallCons, KsCons, ScriptCons
 from cobbled.database.host import HostProxy
 from cobbled.log.log import LOGGER
 from cobbled.server.remote import RemoteServer
 from cobbled.util.aes_util import AesUtil
-from cobbled.util.response_util import ResUtil
-from cobbled.util.validate_util import ISOChecker, KsChecker, InstallChecker, HostChecker, run_ipmitool
 from cobbled.util.file_util import FileUtil
-
-from datetime import datetime
+from cobbled.util.response_util import ResUtil
+from cobbled.util.validate_util import (
+    HostChecker,
+    InstallChecker,
+    ISOChecker,
+    KsChecker,
+    run_ipmitool,
+)
 
 # 从配置文件里获取ks文件保存地址
 ks_dir = os.path.join(configuration.ks.get("HTTP_DIR"), "ks")
@@ -53,6 +59,40 @@ os_install_log_dir = configuration.host.get("OS_INSTALL_LOG_DIR")
 # 从配置文件里获取操作系统安装可使用的的IP范围
 os_start_ip = configuration.host.get("OS_START_IP")
 os_end_ip = configuration.host.get("OS_END_IP")
+
+_LEGACY_PXE_VALUE_ARGUMENT = re.compile(r"(?<!\S)(ks|repo)=")
+_LEGACY_PXE_FLAG_ARGUMENT = re.compile(r"(?<!\S)kssendmac(?=\s|$)")
+
+
+def prefix_pxe_boot_arguments(content):
+    """Add the Anaconda ``inst.`` prefix to legacy PXE boot arguments."""
+    content = _LEGACY_PXE_VALUE_ARGUMENT.sub(
+        lambda match: "inst." + match.group(0), content)
+    return _LEGACY_PXE_FLAG_ARGUMENT.sub("inst.kssendmac", content)
+
+
+def update_pxe_config_files(config_dir=InstallCons.PXE_CONFIG_DIR):
+    """Update regular PXE config files without invoking a shell."""
+    updated_count = 0
+    with os.scandir(config_dir) as entries:
+        config_paths = [
+            entry.path for entry in entries
+            if not entry.name.startswith(".") and entry.is_file(follow_symlinks=False)
+        ]
+
+    for config_path in config_paths:
+        with open(config_path, "r+", encoding="utf-8") as config_file:
+            content = config_file.read()
+            updated_content = prefix_pxe_boot_arguments(content)
+            if updated_content == content:
+                continue
+
+            config_file.seek(0)
+            config_file.write(updated_content)
+            config_file.truncate()
+            updated_count += 1
+
+    return updated_count
 
 
 class AutoInstall(Resource):
@@ -222,9 +262,12 @@ class AutoInstall(Resource):
                 if not update_result:
                     LOGGER.error(f'The host update failed:{str(hosts[0].host_id)}')
 
-            # 21，新版本的Anaconda做了调整，参数前必须要加inst.前缀，否者系统无法识别
-            if os.system(InstallCons.MODIFY_PXE_LINUX_DEFAULT_CMD):
-                LOGGER.error(InstallCons.MODIFY_PXE_LINUX_DEFAULT_TIPS)
+            # 21，新版本的Anaconda做了调整，参数前必须要加inst.前缀，否则系统无法识别
+            try:
+                update_pxe_config_files()
+            except (OSError, UnicodeError):
+                LOGGER.exception(InstallCons.MODIFY_PXE_LINUX_DEFAULT_TIPS)
+                return ResUtil.failed(InstallCons.MODIFY_PXE_LINUX_DEFAULT_TIPS, result_list)
         except Exception as e:
             LOGGER.error(f'fail to auto install:{str(e)}')
             code = 400

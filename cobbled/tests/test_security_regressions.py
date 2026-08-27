@@ -107,6 +107,45 @@ class TestCommandInjectionRegressions(unittest.TestCase):
             "power", "status"
         ])
 
+    def test_pxe_boot_argument_prefixing_is_idempotent(self):
+        original = (
+            "append initrd=initrd.img ks=http://host/a.ks "
+            "repo=http://host/repo kssendmac "
+            "inst.ks=http://old inst.repo=http://old inst.kssendmac\n"
+        )
+        expected = (
+            "append initrd=initrd.img inst.ks=http://host/a.ks "
+            "inst.repo=http://host/repo inst.kssendmac "
+            "inst.ks=http://old inst.repo=http://old inst.kssendmac\n"
+        )
+
+        updated = install_view.prefix_pxe_boot_arguments(original)
+        updated_twice = install_view.prefix_pxe_boot_arguments(updated)
+
+        self.assertEqual(updated, expected)
+        self.assertEqual(updated_twice, expected)
+
+    def test_pxe_config_update_only_rewrites_regular_files(self):
+        original = "append ks=http://host/a.ks repo=http://host/repo kssendmac\n"
+        expected = "append inst.ks=http://host/a.ks inst.repo=http://host/repo inst.kssendmac\n"
+
+        with tempfile.TemporaryDirectory() as config_dir:
+            config_path = os.path.join(config_dir, "default")
+            with open(config_path, "w", encoding="utf-8") as config_file:
+                config_file.write(original)
+
+            os.mkdir(os.path.join(config_dir, "entries"))
+            with open(os.path.join(config_dir, ".lock"), "w", encoding="utf-8") as hidden_file:
+                hidden_file.write(original)
+
+            first_update_count = install_view.update_pxe_config_files(config_dir)
+            second_update_count = install_view.update_pxe_config_files(config_dir)
+
+            with open(config_path, "r", encoding="utf-8") as config_file:
+                self.assertEqual(config_file.read(), expected)
+            self.assertEqual(first_update_count, 1)
+            self.assertEqual(second_update_count, 0)
+
 
 if __name__ == "__main__":
     unittest.main()
