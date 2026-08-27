@@ -27,6 +27,7 @@ setup(
     install_requires=[
         'Flask',
         'Flask-RESTful',
+        'Flask-APScheduler',
         'requests',
         'Werkzeug',
         'gevent',
@@ -34,7 +35,8 @@ setup(
         'uWSGI',
         'PyMySQL',
         'sqlalchemy',
-        'concurrent-log-handler'
+        'concurrent-log-handler',
+        'validators'
     ],
     author='cmd-lsw-yyy-zyc',
     data_files=[
