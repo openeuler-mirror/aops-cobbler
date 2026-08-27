@@ -101,7 +101,7 @@ class UploadISO(Resource):
 class QueryISO(Resource):
     """
     Interface for query iso file.
-    Restful API: POST
+    Restful API: GET
     """
 
     def get(self):
