@@ -19,6 +19,7 @@ Description: Restful APIs for script manager
 
 import os
 import subprocess
+import tempfile
 from io import SEEK_END
 
 from flask_restful import Resource
@@ -65,16 +66,17 @@ class UploadScript(Resource):
         if script_file.tell() > max_content_length:
             return ResUtil.failed(ScriptCons.CHECK_SCRIPT_SIZE_TIPS + str(max_content_length//1024) + 'MB')
 
-        script_full_path_temp = os.path.join(upload_dir, script_name + "_temp.sh")
         try:
-            # 先写入临时文件
-            script_file.stream.seek(0)
-            script_file.save(script_full_path_temp)
+            # 使用系统临时文件校验脚本文件是否有语法错误
+            with tempfile.NamedTemporaryFile(suffix='.sh') as temp_file:
+                script_file.stream.seek(0)
+                script_file.save(temp_file)
+                temp_file.flush()
 
-            # 使用bash -n命令校验脚本文件是否有语法错误
-            check_script_result = subprocess.run(['bash', '-n', script_full_path_temp], capture_output=True, text=True)
-            if check_script_result.returncode:
-                return ResUtil.failed(check_script_result.stderr)
+                # 使用bash -n命令校验脚本文件是否有语法错误
+                check_script_result = subprocess.run(['bash', '-n', temp_file.name], capture_output=True, text=True)
+                if check_script_result.returncode:
+                    return ResUtil.failed(check_script_result.stderr)
 
             # 写入该脚本文件
             script_file.stream.seek(0)
@@ -84,9 +86,6 @@ class UploadScript(Resource):
             LOGGER.error(f'fail to upload script file:{str(e)}')
             code = 500
             msg = str(e)
-        finally:
-            if os.path.exists(script_full_path_temp):
-                os.remove(script_full_path_temp)
 
         return ResUtil.success_or_failed(code, msg)
 
