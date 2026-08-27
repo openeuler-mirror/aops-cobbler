@@ -1,7 +1,23 @@
+# Web framework
 flask~=2.3.3
+Flask-RESTful
+Werkzeug
+Flask-APScheduler
+APScheduler~=3.10.4
+
+# Database
 SQLAlchemy~=2.0.22
-gevent~=23.9.1
-setuptools~=65.5.0
+PyMySQL
+
+# Crypto / validation
 cryptography~=41.0.4
 validators~=0.22.0
-APScheduler~=3.10.4
+
+# Async server / logging
+gevent~=23.9.1
+concurrent-log-handler
+
+# Build tooling
+setuptools~=65.5.0
+
+uWSGI
