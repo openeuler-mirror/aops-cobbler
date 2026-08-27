@@ -32,15 +32,15 @@ class FileUtil:
             return hash_obj.hexdigest()
 
     @staticmethod
-    def write_file_content(file_path, content):
-        with open(file_path, 'w') as f:
+    def write_file_content(file_path, content, encoding="utf-8"):
+        with open(file_path, "w", encoding=encoding) as f:
             f.write(content)
 
     @staticmethod
-    def read_file_content(file_path):
-        content = ''
+    def read_file_content(file_path, encoding="utf-8"):
+        content = ""
         if os.path.exists(file_path):
-            with open(file_path, 'r') as f:
+            with open(file_path, "r", encoding=encoding) as f:
                 content = f.read()
         return content
 
@@ -52,20 +52,4 @@ class FileUtil:
 
     @staticmethod
     def makedirs(path, mode=0o755, exist_ok=True):
-        head, tail = os.path.split(path)
-        if not tail:
-            head, tail = os.path.split(head)
-        if head and tail and not os.path.exists(head):
-            FileUtil.makedirs(head, mode, exist_ok=exist_ok)
-            cdir = os.curdir
-            if isinstance(tail, bytes):
-                cdir = bytes(os.curdir, 'ASCII')
-            if tail == cdir:  # xxx/newdir/. exists if xxx/newdir exists
-                return
-        try:
-            os.mkdir(path, mode)
-        except OSError:
-            # Cannot rely on checking for EEXIST, since the operating system
-            # could give priority to other errors like EACCES or EROFS
-            if not exist_ok or not os.path.isdir(path):
-                raise
+        os.makedirs(path, mode=mode, exist_ok=exist_ok)
