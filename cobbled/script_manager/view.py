@@ -64,7 +64,7 @@ class UploadScript(Resource):
         script_file.seek(0, SEEK_END)
         # 校验上传文件大小是否超过上限
         if script_file.tell() > max_content_length:
-            return ResUtil.failed(ScriptCons.CHECK_SCRIPT_SIZE_TIPS + str(max_content_length//1024) + 'MB')
+            return ResUtil.failed(ScriptCons.CHECK_SCRIPT_SIZE_TIPS + str(max_content_length//1024) + 'KiB')
 
         try:
             # 使用系统临时文件校验脚本文件是否有语法错误
