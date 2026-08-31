@@ -17,10 +17,15 @@ Description: manager configuration
 """
 
 
-import os
 import configparser
+import math
+import os
+import re
+
 from cobbled.conf import default_config
 from cobbled.conf.constant import ConfigCons
+
+MULTIPLICATION_EXPRESSION = re.compile(r"\d+(?:\s*\*\s*\d+)+")
 
 
 class Config:
@@ -70,6 +75,8 @@ class Config:
                 continue
             if value.isdigit():
                 value = int(value)
+            elif MULTIPLICATION_EXPRESSION.fullmatch(value):
+                value = math.prod(int(factor.strip()) for factor in value.split("*"))
             elif value.lower() in ("true", "false"):
                 value = True if value.lower() == "true" else False
             temp_config[key.upper()] = value
