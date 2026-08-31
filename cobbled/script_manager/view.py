@@ -30,6 +30,7 @@ from cobbled.conf.constant import ScriptCons
 from cobbled.util.response_util import ResUtil
 from cobbled.util.validate_util import ScriptChecker
 from cobbled.util.file_util import FileUtil
+from cobbled.util.request_util import JsonObjectResource
 
 # 从配置文件里获取脚本文件大小的上限值
 max_content_length = configuration.script.get("MAX_CONTENT_LENGTH")
@@ -90,7 +91,7 @@ class UploadScript(Resource):
         return ResUtil.success_or_failed(code, msg)
 
 
-class QueryScript(Resource):
+class QueryScript(JsonObjectResource):
     """
     Interface for query script file.
     Restful API: POST
@@ -118,7 +119,7 @@ class QueryScript(Resource):
         return script_arr
 
 
-class DeleteScript(Resource):
+class DeleteScript(JsonObjectResource):
     """
     Interface for delete script file.
     Restful API: POST

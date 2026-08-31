@@ -23,7 +23,6 @@ import os.path
 import subprocess
 import zipfile
 
-from flask_restful import Resource
 from flask import request, send_file
 
 from cobbled.conf import configuration
@@ -35,6 +34,7 @@ from cobbled.util.aes_util import AesUtil
 from cobbled.util.response_util import ResUtil
 from cobbled.util.validate_util import ISOChecker, KsChecker, InstallChecker, HostChecker, run_ipmitool
 from cobbled.util.file_util import FileUtil
+from cobbled.util.request_util import JsonObjectResource
 
 from datetime import datetime
 
@@ -55,7 +55,7 @@ os_start_ip = configuration.host.get("OS_START_IP")
 os_end_ip = configuration.host.get("OS_END_IP")
 
 
-class AutoInstall(Resource):
+class AutoInstall(JsonObjectResource):
     """
     Interface for auto install os.
     Restful API: POST
@@ -234,7 +234,7 @@ class AutoInstall(Resource):
         return ResUtil.success_or_failed(code, msg, result_list)
 
 
-class Notify(Resource):
+class Notify(JsonObjectResource):
     """
     Interface for notify.
     Restful API: POST
@@ -322,7 +322,7 @@ def host_scheduler():
     LOGGER.info("end to execute scheduled tasks to check if the os has failed to install.")
 
 
-class GetInstallLogFile(Resource):
+class GetInstallLogFile(JsonObjectResource):
     """
     Interface for get os install log file.
     Restful API: POST

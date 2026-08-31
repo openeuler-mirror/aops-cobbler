@@ -28,6 +28,7 @@ from cobbled.server.remote import RemoteServer
 from cobbled.util.response_util import ResUtil
 from cobbled.util.validate_util import ISOChecker
 from cobbled.util.file_util import FileUtil
+from cobbled.util.request_util import JsonObjectResource
 
 # 从配置文件里获取镜像文件上传地址
 upload_dir = configuration.iso.get("UPLOAD_DIR")
@@ -126,7 +127,7 @@ class QueryISO(Resource):
         return rep_arr
 
 
-class DeleteISO(Resource):
+class DeleteISO(JsonObjectResource):
     """
     Interface for delete iso file.
     Restful API: POST

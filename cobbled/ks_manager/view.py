@@ -21,12 +21,12 @@ import os.path
 import subprocess
 import tempfile
 
-from flask_restful import Resource
 from flask import request
 from cobbled.log.log import LOGGER
 from cobbled.util.response_util import ResUtil
 from cobbled.util.validate_util import KsChecker
 from cobbled.util.file_util import FileUtil
+from cobbled.util.request_util import JsonObjectResource
 from cobbled.conf import configuration
 from cobbled.conf.constant import KsCons
 
@@ -36,7 +36,7 @@ if not os.path.exists(ks_dir):
     FileUtil.makedirs(ks_dir)
 
 
-class AddKickstart(Resource):
+class AddKickstart(JsonObjectResource):
     """
     Interface for add kickstart file.
     Restful API: POST
@@ -67,7 +67,7 @@ class AddKickstart(Resource):
         return ResUtil.success(KsCons.ADD_KS_SUCCESS_TIPS)
 
 
-class UpdateKickstart(Resource):
+class UpdateKickstart(JsonObjectResource):
     """
     Interface for update kickstart file.
     Restful API: POST
@@ -101,7 +101,7 @@ class UpdateKickstart(Resource):
         return ResUtil.success(KsCons.UPDATE_KS_SUCCESS_TIPS)
 
 
-class DeleteKickstart(Resource):
+class DeleteKickstart(JsonObjectResource):
     """
     Interface for delete kickstart file.
     Restful API: POST
@@ -126,7 +126,7 @@ class DeleteKickstart(Resource):
         return ResUtil.success(KsCons.DELETE_KS_SUCCESS_TIPS)
 
 
-class QueryKickstart(Resource):
+class QueryKickstart(JsonObjectResource):
     """
     Interface for query kickstart file.
     Restful API: POST
