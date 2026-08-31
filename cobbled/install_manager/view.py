@@ -213,14 +213,21 @@ class AutoInstall(Resource):
                     host["reason"] = InstallCons.COBBLER_SYSTEM_TIPS
                     continue
 
-                host["result"] = "succeed"
-                host["reason"] = ""
                 host_ip_list.append(host_ip)
 
-                # 20，更新主机状态为装机中
-                update_result = host_proxy.update_host_info({"host_id": hosts[0].host_id, "status": 3})
+                # 20，持久化分配的IP并更新主机状态为装机中
+                update_result = host_proxy.update_host_info({
+                    "host_id": hosts[0].host_id,
+                    "host_ip": host_ip,
+                    "status": 3
+                })
                 if not update_result:
                     LOGGER.error(f'The host update failed:{str(hosts[0].host_id)}')
+                    host["reason"] = HostCons.UPDATE_HOST_FAILED_TIPS
+                    continue
+
+                host["result"] = "succeed"
+                host["reason"] = ""
 
             # 21，新版本的Anaconda做了调整，参数前必须要加inst.前缀，否者系统无法识别
             if os.system(InstallCons.MODIFY_PXE_LINUX_DEFAULT_CMD):
