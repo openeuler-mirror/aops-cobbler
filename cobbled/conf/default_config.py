@@ -74,7 +74,8 @@ host = {
   "OS_INSTALLED_TIME": 30,
   "OS_INSTALL_LOG_DIR": "/var/log/osinstall/",
   "OS_START_IP": "10.10.192.210",
-  "OS_END_IP": "10.10.192.211"
+  "OS_END_IP": "10.10.192.211",
+  "SUBNET_MASK": "24"
 }
 
 script = {

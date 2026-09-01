@@ -54,6 +54,9 @@ os_install_log_dir = configuration.host.get("OS_INSTALL_LOG_DIR")
 os_start_ip = configuration.host.get("OS_START_IP")
 os_end_ip = configuration.host.get("OS_END_IP")
 
+# 从配置文件里获取装机网段掩码
+subnet_mask = configuration.host.get("SUBNET_MASK")
+
 
 class AutoInstall(Resource):
     """
@@ -122,7 +125,8 @@ class AutoInstall(Resource):
             # 在ks文件内容中添加调用通知接口内容，用于在操作系统安装完成后更新主机状态，否则aops-cobbler服务将无法知道操作系统是否已经安装完成
             after_os_installed = FileUtil.read_file_content("/opt/aops/script/after_os_installed.sh")
             after_os_installed = after_os_installed.replace("127.0.0.1", client_ip).replace("8888", str(port))
-            after_os_installed = after_os_installed.replace("127.0.0.254", get_default_gateway(client_ip, '24'))
+            after_os_installed = after_os_installed.replace("127.0.0.254",
+                                                            get_default_gateway(client_ip, subnet_mask))
             if install_rpm:
                 after_os_installed = after_os_installed.replace("r_p_m_s", install_rpm.replace(',', ' '), 1)
             ks_content = ks_content + "\n%post\n" + after_os_installed + "\n%end\n"
@@ -398,6 +402,12 @@ def distribute_ip(host_proxy, host_ip_list):
 
 
 def get_default_gateway(ip_addr, subnet_mask):
-    network = ipaddress.IPv4Network((ip_addr + '/' + subnet_mask), strict=False)
-    default_gateway = str(network.network_address + 254)
+    # 配置文件里纯数字的掩码会被 Config 解析成 int，拼接前统一转成字符串
+    network = ipaddress.IPv4Network((ip_addr + '/' + str(subnet_mask)), strict=False)
+    # 网关取网段内最后一个可用主机地址
+    if network.num_addresses >= 4:
+        default_gateway = str(network.network_address + (network.num_addresses - 2))
+    else:
+        # /31、/32 这类小网段没有可用的网关地址，使用网络地址本身
+        default_gateway = str(network.network_address)
     return default_gateway
