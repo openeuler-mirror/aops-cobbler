@@ -71,6 +71,10 @@ def _register_blue_point(urls):
 
 
 app = init_application(name="cobbled", settings=configuration, register_urls=URLS)
+max_content_length = configuration.iso.get("MAX_CONTENT_LENGTH")
+if not isinstance(max_content_length, int) or max_content_length <= 0:
+    raise ValueError("iso.max_content_length must be a positive integer")
+app.config["MAX_CONTENT_LENGTH"] = max_content_length
 app.config.from_object(SchedulerConfig())
 scheduler = APScheduler()
 # 将调度器对象与Flask应用程序实例(app)相关联

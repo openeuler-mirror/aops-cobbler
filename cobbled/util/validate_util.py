@@ -31,6 +31,9 @@ from cobbled.util.aes_util import AesUtil
 from cobbled.util.response_util import ResUtil
 
 
+IPMITOOL_TIMEOUT = 30
+
+
 def run_ipmitool(bmc_ip, bmc_user_name, bmc_passwd, *command):
     """Run ipmitool without passing untrusted BMC values through a shell."""
     try:
@@ -38,7 +41,9 @@ def run_ipmitool(bmc_ip, bmc_user_name, bmc_passwd, *command):
             "ipmitool", "-H", bmc_ip, "-I", "lanplus",
             "-U", bmc_user_name, "-P", bmc_passwd,
             *command
-        ])
+        ], timeout=IPMITOOL_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        return 1
     except OSError:
         return 1
     return result.returncode

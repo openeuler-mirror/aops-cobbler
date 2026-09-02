@@ -106,6 +106,9 @@ class TestBatchAddHost(unittest.TestCase):
                              for statement in statements), 1)
         session.close()
 
+    def test_host_name_column_matches_hostname_length_limit(self):
+        self.assertEqual(RawHost.__table__.c.host_name.type.length, 63)
+
     def _post(self, hosts, proxy, encrypt=False, check_side_effect=None):
         with self.app.test_request_context(json={"host_list": hosts}), ExitStack() as stack:
             stack.enter_context(patch.object(view, "HostProxy", return_value=proxy))

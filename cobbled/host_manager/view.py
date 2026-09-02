@@ -128,6 +128,7 @@ class BatchAddHost(Resource):
 
             bmc_passwd = host["bmc_passwd"]
             host["bmc_passwd"] = AesUtil.encrypt(bmc_passwd)
+            host["host_mac"] = host_mac
             data_list.append(RawHost(**host))
 
             host["result"] = "succeed"
@@ -183,6 +184,10 @@ class UpdateHost(Resource):
 
         if hosts[0].bmc_passwd != request.json.get("bmc_passwd"):
             request.json["bmc_passwd"] = AesUtil.encrypt(request.json["bmc_passwd"])
+
+        # MAC转为小写，避免大小写差异导致重复校验失效
+        if request.json.get("host_mac"):
+            request.json["host_mac"] = request.json["host_mac"].lower()
 
         if not host_proxy.update_host_info(request.json):
             return ResUtil.failed(HostCons.UPDATE_HOST_FAILED_TIPS)

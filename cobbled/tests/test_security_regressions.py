@@ -13,6 +13,7 @@
 """Regression tests for command-injection vulnerabilities."""
 
 import os
+import subprocess
 import tempfile
 import unittest
 import zipfile
@@ -20,6 +21,7 @@ from unittest.mock import patch
 
 from flask import Flask
 
+from cobbled.conf.constant import HostCons
 from cobbled.install_manager import view as install_view
 from cobbled.util import validate_util
 from cobbled.util.validate_util import HostChecker
@@ -105,7 +107,78 @@ class TestCommandInjectionRegressions(unittest.TestCase):
             "ipmitool", "-H", host["bmc_ip"], "-I", "lanplus",
             "-U", host["bmc_user_name"], "-P", password,
             "power", "status"
-        ])
+        ], timeout=validate_util.IPMITOOL_TIMEOUT)
+
+    def test_bmc_connection_fails_when_ipmitool_times_out(self):
+        host = {
+            "bmc_ip": "192.0.2.1",
+            "bmc_user_name": "admin",
+            "bmc_passwd": "encrypted-password",
+        }
+
+        with patch.object(validate_util.configuration, "host", {"CHECK_BMC_CONNECTION": 1}), \
+                patch.object(validate_util.AesUtil, "decrypt", return_value="password"), \
+                patch.object(validate_util.subprocess, "run",
+                             side_effect=subprocess.TimeoutExpired("ipmitool", 1)):
+            result = HostChecker.check_bmc_connection(host)
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.json["msg"], HostCons.CHECK_BMC_CONNECTION_TIPS)
+
+    def test_bmc_connection_fails_when_ipmitool_is_missing(self):
+        host = {
+            "bmc_ip": "192.0.2.1",
+            "bmc_user_name": "admin",
+            "bmc_passwd": "encrypted-password",
+        }
+
+        with patch.object(validate_util.configuration, "host", {"CHECK_BMC_CONNECTION": 1}), \
+                patch.object(validate_util.AesUtil, "decrypt", return_value="password"), \
+                patch.object(validate_util.subprocess, "run",
+                             side_effect=FileNotFoundError("ipmitool")):
+            result = HostChecker.check_bmc_connection(host)
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.json["msg"], HostCons.CHECK_BMC_CONNECTION_TIPS)
+
+    def test_pxe_boot_argument_prefixing_is_idempotent(self):
+        original = (
+            "append initrd=initrd.img ks=http://host/a.ks "
+            "repo=http://host/repo kssendmac "
+            "inst.ks=http://old inst.repo=http://old inst.kssendmac\n"
+        )
+        expected = (
+            "append initrd=initrd.img inst.ks=http://host/a.ks "
+            "inst.repo=http://host/repo inst.kssendmac "
+            "inst.ks=http://old inst.repo=http://old inst.kssendmac\n"
+        )
+
+        updated = install_view.prefix_pxe_boot_arguments(original)
+        updated_twice = install_view.prefix_pxe_boot_arguments(updated)
+
+        self.assertEqual(updated, expected)
+        self.assertEqual(updated_twice, expected)
+
+    def test_pxe_config_update_only_rewrites_regular_files(self):
+        original = "append ks=http://host/a.ks repo=http://host/repo kssendmac\n"
+        expected = "append inst.ks=http://host/a.ks inst.repo=http://host/repo inst.kssendmac\n"
+
+        with tempfile.TemporaryDirectory() as config_dir:
+            config_path = os.path.join(config_dir, "default")
+            with open(config_path, "w", encoding="utf-8") as config_file:
+                config_file.write(original)
+
+            os.mkdir(os.path.join(config_dir, "entries"))
+            with open(os.path.join(config_dir, ".lock"), "w", encoding="utf-8") as hidden_file:
+                hidden_file.write(original)
+
+            first_update_count = install_view.update_pxe_config_files(config_dir)
+            second_update_count = install_view.update_pxe_config_files(config_dir)
+
+            with open(config_path, "r", encoding="utf-8") as config_file:
+                self.assertEqual(config_file.read(), expected)
+            self.assertEqual(first_update_count, 1)
+            self.assertEqual(second_update_count, 0)
 
 
 if __name__ == "__main__":
