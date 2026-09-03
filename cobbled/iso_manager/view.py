@@ -116,7 +116,9 @@ class QueryISO(Resource):
             for distro in distros:
                 arch = distro["arch"]
                 iso_name = distro["name"]
-                iso_name = iso_name[:iso_name.rfind('-' + arch)]
+                idx = iso_name.rfind('-' + arch)
+                if idx != -1:
+                    iso_name = iso_name[:idx]
                 rep_data = {"iso_name": iso_name + '.iso',
                             "arch": arch,
                             "iso_size": FileUtil.get_file_size(os.path.join(upload_dir, iso_name + '.iso')),

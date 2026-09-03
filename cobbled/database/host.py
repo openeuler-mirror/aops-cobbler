@@ -44,6 +44,8 @@ class HostProxy(MysqlProxy):
             bool: True or False
         """
         params["bmc_passwd"] = AesUtil.encrypt(params["bmc_passwd"])
+        # MAC转为小写，避免大小写差异导致重复校验失效
+        params["host_mac"] = params["host_mac"].lower()
         return self.insert(RawHost, params)
 
     def add_host_batch(self, host_list) -> bool:
@@ -164,7 +166,7 @@ class HostProxy(MysqlProxy):
         Returns:
             bool: query succeed or fail
         """
-        return self.select(RawHost, {RawHost.host_mac == host_mac})
+        return self.select(RawHost, {RawHost.host_mac == host_mac.lower()})
 
     def query_host_by_host_ip(self, host_ip: str):
         """

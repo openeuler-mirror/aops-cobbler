@@ -28,7 +28,6 @@ setup(
         'Flask',
         'Flask-RESTful',
         'Flask-APScheduler',
-        'requests',
         'Werkzeug',
         'gevent',
         'cryptography',
