@@ -1,5 +1,7 @@
 # aops-cobbler
 
+简体中文 | [English](./README_EN.md)
+
 ### 介绍
 智能运维平台aops的一个重要组成服务，提供一键自动安装操作系统功能，负责统一跟Cobbler服务端进行交互，管理Cobbler相关配置。
 

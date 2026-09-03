@@ -1,5 +1,7 @@
 # aops-cobbler
 
+English | [简体中文](./README.md)
+
 ## Overview
 
 An important service of the intelligent O&M platform A-Ops, providing automated OS installation. It interacts with the Cobbler server in a unified manner and manages Cobbler-related configurations.
