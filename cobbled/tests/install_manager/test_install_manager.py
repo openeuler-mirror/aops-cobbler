@@ -18,6 +18,7 @@ Description: test install manager.
 
 import unittest
 from datetime import datetime, timedelta
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 from sqlalchemy import create_engine
@@ -26,7 +27,7 @@ from sqlalchemy.orm import sessionmaker
 from cobbled.database.host import HostProxy
 from cobbled.database.table import Base, RawHost
 from cobbled.install_manager import view
-from cobbled.install_manager.view import get_default_gateway
+from cobbled.install_manager.view import get_default_gateway, render_after_os_installed_script
 
 
 class TestGetDefaultGateway(unittest.TestCase):
@@ -37,6 +38,16 @@ class TestGetDefaultGateway(unittest.TestCase):
 
     def test_accepts_string_mask(self):
         self.assertEqual(get_default_gateway("10.10.192.213", "24"), "10.10.192.254")
+
+    def test_after_install_script_uses_configured_subnet_mask(self):
+        script_path = Path(__file__).parents[3] / "script" / "after_os_installed.sh"
+        script = script_path.read_text(encoding="utf-8")
+
+        rendered_script = render_after_os_installed_script(
+            script, "10.10.192.1", 8888, 16)
+
+        self.assertIn('echo "PREFIX=16"', rendered_script)
+        self.assertNotIn("s_u_b_n_e_t_m_a_s_k", rendered_script)
 
 
 class TestHostScheduler(unittest.TestCase):

@@ -15,10 +15,9 @@
  cd /etc/sysconfig/network-scripts
  echo "BOOTPROTO=static" >> ${network_config_file_name}
  echo "IPADDR=${service_ip}" >> ${network_config_file_name}
- echo "PREFIX=24" >> ${network_config_file_name}
+ echo "PREFIX=s_u_b_n_e_t_m_a_s_k" >> ${network_config_file_name}
  echo "GATEWAY=${gate_way}" >> ${network_config_file_name}
 
  if [ "${rpms}" != "r_p_m_s" ]; then
    yum install -y ${rpms}
  fi
- 

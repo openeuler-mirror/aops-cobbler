@@ -75,6 +75,16 @@ def prefix_pxe_boot_arguments(content):
     return _LEGACY_PXE_FLAG_ARGUMENT.sub("inst.kssendmac", content)
 
 
+def render_after_os_installed_script(template, client_ip, port, subnet_mask, install_rpm=None):
+    """Render values that are only known when an installation is started."""
+    rendered = template.replace("127.0.0.1", client_ip).replace("8888", str(port))
+    rendered = rendered.replace("127.0.0.254", get_default_gateway(client_ip, subnet_mask))
+    rendered = rendered.replace("s_u_b_n_e_t_m_a_s_k", str(subnet_mask))
+    if install_rpm:
+        rendered = rendered.replace("r_p_m_s", install_rpm.replace(',', ' '), 1)
+    return rendered
+
+
 def update_pxe_config_files(config_dir=InstallCons.PXE_CONFIG_DIR):
     """Update regular PXE config files without invoking a shell."""
     updated_count = 0
@@ -165,11 +175,8 @@ class AutoInstall(JsonObjectResource):
             # 读取操作系统安装完成以后需要执行的脚本:ipmitool等自定义rpm包的安装
             # 在ks文件内容中添加调用通知接口内容，用于在操作系统安装完成后更新主机状态，否则aops-cobbler服务将无法知道操作系统是否已经安装完成
             after_os_installed = FileUtil.read_file_content("/opt/aops/script/after_os_installed.sh")
-            after_os_installed = after_os_installed.replace("127.0.0.1", client_ip).replace("8888", str(port))
-            after_os_installed = after_os_installed.replace("127.0.0.254",
-                                                            get_default_gateway(client_ip, subnet_mask))
-            if install_rpm:
-                after_os_installed = after_os_installed.replace("r_p_m_s", install_rpm.replace(',', ' '), 1)
+            after_os_installed = render_after_os_installed_script(
+                after_os_installed, client_ip, port, subnet_mask, install_rpm)
             ks_content = ks_content + "\n%post\n" + after_os_installed + "\n%end\n"
 
             # 11，将自定义脚本内容添加到在ks内容中
