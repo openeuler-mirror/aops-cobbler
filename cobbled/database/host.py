@@ -19,7 +19,7 @@ Description:
 
 import math
 
-from sqlalchemy import or_
+from sqlalchemy import and_, asc, or_
 from sqlalchemy.exc import SQLAlchemyError
 
 from cobbled.database.proxy import MysqlProxy
@@ -155,6 +155,31 @@ class HostProxy(MysqlProxy):
             bool: query succeed or fail
         """
         return self.select(RawHost, {RawHost.status == status})
+
+    def query_hosts_by_status_batch(self, status: int, batch_size: int,
+                                    after_update_time=None, after_host_id=None):
+        """Query a stable batch of hosts using a keyset cursor."""
+        filters = [
+            RawHost.status == status,
+            RawHost.update_time.isnot(None),
+        ]
+        if after_update_time is not None and after_host_id is not None:
+            filters.append(or_(
+                RawHost.update_time > after_update_time,
+                and_(RawHost.update_time == after_update_time,
+                     RawHost.host_id > after_host_id),
+            ))
+
+        try:
+            hosts = (self.session.query(RawHost)
+                     .filter(*filters)
+                     .order_by(asc(RawHost.update_time), asc(RawHost.host_id))
+                     .limit(batch_size)
+                     .all())
+            return True, hosts
+        except SQLAlchemyError as error:
+            LOGGER.error(error)
+            return False, []
 
     def query_host_by_mac(self, host_mac: str):
         """

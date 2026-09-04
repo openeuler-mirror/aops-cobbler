@@ -65,6 +65,7 @@ subnet_mask = configuration.host.get("SUBNET_MASK")
 
 _LEGACY_PXE_VALUE_ARGUMENT = re.compile(r"(?<!\S)(ks|repo)=")
 _LEGACY_PXE_FLAG_ARGUMENT = re.compile(r"(?<!\S)kssendmac(?=\s|$)")
+HOST_SCHEDULER_BATCH_SIZE = 100
 
 
 def prefix_pxe_boot_arguments(content):
@@ -336,35 +337,50 @@ class Notify(JsonObjectResource):
 
 def host_scheduler():
     LOGGER.info("start to execute scheduled tasks to check if the os has failed to install.")
-    # 检索状态是安装中的主机
     host_proxy = HostProxy()
-    query_result, hosts = host_proxy.query_host_by_status(3)
-    if not query_result or not hosts:
-        LOGGER.info("end to execute scheduled tasks with no hosts in installing.")
-        return
-
     failed_hosts = []
-    for host in hosts:
-        if host.update_time is None:
-            continue
+    after_update_time = None
+    after_host_id = None
 
-        interval_seconds = (datetime.now() - host.update_time).total_seconds()
-        if interval_seconds < 300:
-            continue
+    while True:
+        query_result, hosts = host_proxy.query_hosts_by_status_batch(
+            3,
+            HOST_SCHEDULER_BATCH_SIZE,
+            after_update_time,
+            after_host_id,
+        )
+        if not query_result:
+            LOGGER.error("Query installing hosts failed during scheduled task.")
+            break
+        if not hosts:
+            break
 
-        # 检查日志文件是否存在，如果5分钟后安装日志还未生成，则说明已经安装失败。
-        # 状态为装机中，日志文件也已经生成，但是日志文件内容却不再更新，则说明也是安装失败的
-        # 如果安装时间已经超过了30分钟，状态依然是装机中，则按照安装失败来处理。
-        os_install_log_path = os.path.join(os_install_log_dir, host.host_name + "-" + str(host.host_id) + ".log")
-        if not os.path.exists(os_install_log_path) \
-                or (datetime.now() - datetime.fromtimestamp(os.path.getmtime(os_install_log_path))).total_seconds() > 120 \
-                or interval_seconds > os_installed_time * 60:
-            host_info = {
-                "host_id": host.host_id,
-                "status": 4
-            }
-            if host_proxy.update_host_info(host_info):
-                failed_hosts.append(host)
+        for host in hosts:
+            interval_seconds = (datetime.now() - host.update_time).total_seconds()
+            if interval_seconds < 300:
+                continue
+
+            # 检查日志文件是否存在，如果5分钟后安装日志还未生成，则说明已经安装失败。
+            # 状态为装机中，日志文件也已经生成，但是日志文件内容却不再更新，则说明也是安装失败的
+            # 如果安装时间已经超过了30分钟，状态依然是装机中，则按照安装失败来处理。
+            os_install_log_path = os.path.join(
+                os_install_log_dir,
+                host.host_name + "-" + str(host.host_id) + ".log")
+            if not os.path.exists(os_install_log_path) \
+                    or (datetime.now() - datetime.fromtimestamp(
+                        os.path.getmtime(os_install_log_path))).total_seconds() > 120 \
+                    or interval_seconds > os_installed_time * 60:
+                host_info = {
+                    "host_id": host.host_id,
+                    "status": 4
+                }
+                if host_proxy.update_host_info(host_info):
+                    failed_hosts.append(host)
+
+        after_update_time = hosts[-1].update_time
+        after_host_id = hosts[-1].host_id
+        if len(hosts) < HOST_SCHEDULER_BATCH_SIZE:
+            break
 
     # 根据名称删除对应的cobbler system，清理DHCP白名单
     if failed_hosts:
