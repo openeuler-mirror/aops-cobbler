@@ -27,6 +27,9 @@ class TestGetDefaultGateway(unittest.TestCase):
         """Config parses a purely numeric subnet_mask into an int."""
         self.assertEqual(get_default_gateway("10.10.192.213", 24), "10.10.192.254")
 
+    def test_accepts_string_mask(self):
+        self.assertEqual(get_default_gateway("10.10.192.213", "24"), "10.10.192.254")
+
 
 if __name__ == "__main__":
     unittest.main()
