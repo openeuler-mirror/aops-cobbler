@@ -26,7 +26,6 @@ from datetime import datetime
 from io import BytesIO
 
 from flask import request, send_file
-from flask_restful import Resource
 
 from cobbled.conf import configuration
 from cobbled.conf.constant import HostCons, InstallCons, KsCons, ScriptCons
@@ -35,6 +34,7 @@ from cobbled.log.log import LOGGER
 from cobbled.server.remote import RemoteServer
 from cobbled.util.aes_util import AesUtil
 from cobbled.util.file_util import FileUtil
+from cobbled.util.request_util import JsonObjectResource
 from cobbled.util.response_util import ResUtil
 from cobbled.util.validate_util import (
     HostChecker,
@@ -95,7 +95,7 @@ def update_pxe_config_files(config_dir=InstallCons.PXE_CONFIG_DIR):
     return updated_count
 
 
-class AutoInstall(Resource):
+class AutoInstall(JsonObjectResource):
     """
     Interface for auto install os.
     Restful API: POST
@@ -284,7 +284,7 @@ class AutoInstall(Resource):
         return ResUtil.success_or_failed(code, msg, result_list)
 
 
-class Notify(Resource):
+class Notify(JsonObjectResource):
     """
     Interface for notify.
     Restful API: POST
@@ -372,7 +372,7 @@ def host_scheduler():
     LOGGER.info("end to execute scheduled tasks to check if the os has failed to install.")
 
 
-class GetInstallLogFile(Resource):
+class GetInstallLogFile(JsonObjectResource):
     """
     Interface for get os install log file.
     Restful API: POST

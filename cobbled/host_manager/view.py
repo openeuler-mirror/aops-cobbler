@@ -27,11 +27,12 @@ from cobbled.database.host import HostProxy
 from cobbled.database.table import RawHost
 from cobbled.log.log import LOGGER
 from cobbled.util.aes_util import AesUtil
+from cobbled.util.request_util import JsonObjectResource
 from cobbled.util.response_util import ResUtil
 from cobbled.util.validate_util import HostChecker
 
 
-class AddHost(Resource):
+class AddHost(JsonObjectResource):
     """
     Interface for add host.
     Restful API: POST
@@ -59,7 +60,7 @@ class AddHost(Resource):
         return ResUtil.success(HostCons.ADD_HOST_SUCCESS_TIPS)
 
 
-class BatchAddHost(Resource):
+class BatchAddHost(JsonObjectResource):
     """
     Interface for batch add host.
     Restful API: POST
@@ -153,7 +154,7 @@ class BatchAddHost(Resource):
             return ResUtil.failed(HostCons.BATCH_ADD_HOST_FAILED_TIPS, {"result": check_failed_list + check_ok_list})
 
 
-class UpdateHost(Resource):
+class UpdateHost(JsonObjectResource):
     """
     Interface for update host.
     Restful API: POST
@@ -196,7 +197,7 @@ class UpdateHost(Resource):
         return ResUtil.success(HostCons.UPDATE_HOST_SUCCESS_TIPS)
 
 
-class DeleteHost(Resource):
+class DeleteHost(JsonObjectResource):
     """
     Interface for delete host.
     Restful API: POST
@@ -221,7 +222,7 @@ class DeleteHost(Resource):
         return ResUtil.success(HostCons.DELETE_HOST_SUCCESS_TIPS)
 
 
-class QueryHosts(Resource):
+class QueryHosts(JsonObjectResource):
     """
     Interface for query hosts.
     Restful API: POST
