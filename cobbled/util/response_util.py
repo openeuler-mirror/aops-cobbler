@@ -32,13 +32,17 @@ class ResUtil:
     @staticmethod
     def failed(msg: str, data=None):
         if data is not None:
-            return jsonify({'code': 400, 'msg': msg, 'data': data})
+            response = jsonify({'code': 400, 'msg': msg, 'data': data})
         else:
-            return jsonify({'code': 400, 'msg': msg})
+            response = jsonify({'code': 400, 'msg': msg})
+        response.status_code = 400
+        return response
 
     @staticmethod
     def success_or_failed(code: int, msg: str, data=None):
         if data is not None:
-            return jsonify({'code': code, 'msg': msg, 'data': data})
+            response = jsonify({'code': code, 'msg': msg, 'data': data})
         else:
-            return jsonify({'code': code, 'msg': msg})
+            response = jsonify({'code': code, 'msg': msg})
+        response.status_code = code
+        return response
