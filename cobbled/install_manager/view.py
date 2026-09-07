@@ -200,79 +200,79 @@ class AutoInstall(JsonObjectResource):
                 LOGGER.error("Cobbler sync error.")
                 return ResUtil.failed(InstallCons.COBBLER_SYNC_TIPS)
 
-            host_proxy = HostProxy()
-            host_ip_list = []  # 记录已经使用的IP地址
-            for host in host_list:
-                host["result"] = "failed"
-                result_list.append(host)
+            with HostProxy() as host_proxy:
+                host_ip_list = []  # 记录已经使用的IP地址
+                for host in host_list:
+                    host["result"] = "failed"
+                    result_list.append(host)
 
-                # 15，检查当前bmc_ip是否存在
-                query_result, hosts = host_proxy.query_host_by_bmc_ip(host.get("bmc_ip"))
-                if not query_result or not hosts:
-                    host["reason"] = HostCons.CHECK_HOST_EXITS_TIPS
-                    continue
+                    # 15，检查当前bmc_ip是否存在
+                    query_result, hosts = host_proxy.query_host_by_bmc_ip(host.get("bmc_ip"))
+                    if not query_result or not hosts:
+                        host["reason"] = HostCons.CHECK_HOST_EXITS_TIPS
+                        continue
 
-                # 16，分配主机IP
-                host_ip = distribute_ip(host_proxy, host_ip_list)
-                if not host_ip:
-                    host["reason"] = InstallCons.NO_AVAILABLE_IP_LEFT_TIPS
-                    continue
+                    # 16，分配主机IP
+                    host_ip = distribute_ip(host_proxy, host_ip_list)
+                    if not host_ip:
+                        host["reason"] = InstallCons.NO_AVAILABLE_IP_LEFT_TIPS
+                        continue
 
-                # 17，校验bmc联通性
-                host["bmc_user_name"] = hosts[0].bmc_user_name
-                host["bmc_passwd"] = hosts[0].bmc_passwd
-                host["host_name"] = hosts[0].host_name
-                host["host_mac"] = hosts[0].host_mac
-                check_result = HostChecker.check_bmc_connection(host)
-                if check_result:
-                    host["reason"] = check_result.json["msg"]
-                    continue
+                    # 17，校验bmc联通性
+                    host["bmc_user_name"] = hosts[0].bmc_user_name
+                    host["bmc_passwd"] = hosts[0].bmc_passwd
+                    host["host_name"] = hosts[0].host_name
+                    host["host_mac"] = hosts[0].host_mac
+                    check_result = HostChecker.check_bmc_connection(host)
+                    if check_result:
+                        host["reason"] = check_result.json["msg"]
+                        continue
 
-                # 18，调用ipmitool命令设置服务器由PXE启动，并下发主机开机或者重启指令
-                ipmi_log = 'ipmitool -H ' + host.get("bmc_ip") + ' -I lanplus -U ' + host.get("bmc_user_name")
-                bmc_passwd = AesUtil.decrypt(host.get("bmc_passwd"))
+                    # 18，调用ipmitool命令设置服务器由PXE启动，并下发主机开机或者重启指令
+                    ipmi_log = 'ipmitool -H ' + host.get("bmc_ip") + ' -I lanplus -U ' + host.get("bmc_user_name")
+                    bmc_passwd = AesUtil.decrypt(host.get("bmc_passwd"))
 
-                if run_ipmitool(host.get("bmc_ip"), host.get("bmc_user_name"), bmc_passwd,
-                                "chassis", "bootdev", "pxe") or \
-                        run_ipmitool(host.get("bmc_ip"), host.get("bmc_user_name"), bmc_passwd,
-                                     "power", "reset"):
-                    LOGGER.error(ipmi_log + '' + InstallCons.IPMI_COMMAND_EXECUTE_TIPS)
-                    host["reason"] = InstallCons.IPMI_COMMAND_EXECUTE_TIPS
-                    continue
+                    if run_ipmitool(host.get("bmc_ip"), host.get("bmc_user_name"), bmc_passwd,
+                                    "chassis", "bootdev", "pxe") or \
+                            run_ipmitool(host.get("bmc_ip"), host.get("bmc_user_name"), bmc_passwd,
+                                         "power", "reset"):
+                        LOGGER.error(ipmi_log + '' + InstallCons.IPMI_COMMAND_EXECUTE_TIPS)
+                        host["reason"] = InstallCons.IPMI_COMMAND_EXECUTE_TIPS
+                        continue
 
-                # 19，创建cobbler system，将主机的mac地址写入DHCP配置文件的白名单里面，并同步DHCP服务生效
-                system_id = remote_server.new_system(token)
-                host_name = hosts[0].host_name + "-" + str(hosts[0].host_id)
-                remote_server.modify_system(system_id, "name", host_name, token)
-                remote_server.modify_system(system_id, "hostname", host_name, token)
-                remote_server.modify_system(system_id, "profile", profile.get("name"), token)
-                remote_server.modify_system(system_id, 'modify_interface', {
-                    "macaddress-net0": hosts[0].host_mac,
-                    "ipaddress-net0": host_ip,
-                    "dhcptag-net0": "default"
-                }, token)
+                    # 19，创建cobbler system，将主机的mac地址写入DHCP配置文件的白名单里面，并同步DHCP服务生效
+                    system_id = remote_server.new_system(token)
+                    host_name = hosts[0].host_name + "-" + str(hosts[0].host_id)
+                    remote_server.modify_system(system_id, "name", host_name, token)
+                    remote_server.modify_system(system_id, "hostname", host_name, token)
+                    remote_server.modify_system(system_id, "profile", profile.get("name"), token)
+                    remote_server.modify_system(system_id, 'modify_interface', {
+                        "macaddress-net0": hosts[0].host_mac,
+                        "ipaddress-net0": host_ip,
+                        "dhcptag-net0": "default"
+                    }, token)
 
-                # 保存system、同步DHCP生效
-                if not remote_server.save_system(system_id, token) or not remote_server.sync_dhcp(token):
-                    LOGGER.error(InstallCons.COBBLER_SYSTEM_TIPS)
-                    host["reason"] = InstallCons.COBBLER_SYSTEM_TIPS
-                    continue
+                    # 保存system、同步DHCP生效
+                    if not remote_server.save_system(system_id, token) or not remote_server.sync_dhcp(token):
+                        LOGGER.error(InstallCons.COBBLER_SYSTEM_TIPS)
+                        host["reason"] = InstallCons.COBBLER_SYSTEM_TIPS
+                        continue
 
-                host_ip_list.append(host_ip)
+                    host_ip_list.append(host_ip)
 
-                # 20，持久化分配的IP并更新主机状态为装机中
-                update_result = host_proxy.update_host_info({
-                    "host_id": hosts[0].host_id,
-                    "host_ip": host_ip,
-                    "status": 3
-                })
-                if not update_result:
-                    LOGGER.error(f'The host update failed:{str(hosts[0].host_id)}')
-                    host["reason"] = HostCons.UPDATE_HOST_FAILED_TIPS
-                    continue
+                    # 20，持久化分配的IP并更新主机状态为装机中
+                    update_result = host_proxy.update_host_info({
+                        "host_id": hosts[0].host_id,
+                        "host_ip": host_ip,
+                        "status": 3
+                    })
+                    if not update_result:
+                        LOGGER.error(f'The host update failed:{str(hosts[0].host_id)}')
+                        host["reason"] = HostCons.UPDATE_HOST_FAILED_TIPS
+                        continue
 
-                host["result"] = "succeed"
-                host["reason"] = ""
+                    host["result"] = "succeed"
+                    host["reason"] = ""
 
             # 21，新版本的Anaconda做了调整，参数前必须要加inst.前缀，否则系统无法识别
             try:
@@ -305,30 +305,31 @@ class Notify(JsonObjectResource):
             return check_result
 
         # 根据bmc_ip更新主机相关信息
-        host_proxy = HostProxy()
-        query_result, hosts = host_proxy.query_host_by_bmc_ip(bmc_ip)
-        if not query_result:
-            return ResUtil.failed(HostCons.QUERY_HOST_FAILED_TIPS)
-        if not hosts:
-            return ResUtil.failed(HostCons.CHECK_HOST_EXITS_TIPS)
+        with HostProxy() as host_proxy:
+            query_result, hosts = host_proxy.query_host_by_bmc_ip(bmc_ip)
+            if not query_result:
+                return ResUtil.failed(HostCons.QUERY_HOST_FAILED_TIPS)
+            if not hosts:
+                return ResUtil.failed(HostCons.CHECK_HOST_EXITS_TIPS)
 
-        host_info = {
-            "host_id": hosts[0].host_id,
-            "host_name": hosts[0].host_name,
-            "bmc_ip": hosts[0].bmc_ip,
-            "bmc_user_name": hosts[0].bmc_user_name,
-            "bmc_passwd": hosts[0].bmc_passwd,
-            "host_ip": service_ip,
-            "status": 1,
-        }
+            host_info = {
+                "host_id": hosts[0].host_id,
+                "host_name": hosts[0].host_name,
+                "bmc_ip": hosts[0].bmc_ip,
+                "bmc_user_name": hosts[0].bmc_user_name,
+                "bmc_passwd": hosts[0].bmc_passwd,
+                "host_ip": service_ip,
+                "status": 1,
+            }
+            system_name = hosts[0].host_name + "-" + str(hosts[0].host_id)
 
-        update_result = host_proxy.update_host_info(host_info)
-        if not update_result:
-            return ResUtil.failed(HostCons.UPDATE_HOST_FAILED_TIPS)
+            update_result = host_proxy.update_host_info(host_info)
+            if not update_result:
+                return ResUtil.failed(HostCons.UPDATE_HOST_FAILED_TIPS)
 
         # 根据名称删除对应的cobbler system，清理DHCP白名单
         remote_server, token = RemoteServer().get_remote_server()
-        remote_server.remove_system(hosts[0].host_name + "-" + str(hosts[0].host_id), token)
+        remote_server.remove_system(system_name, token)
         remote_server.sync_dhcp(token)
 
         LOGGER.info("end to notify aops-cobbler to update host info.")
@@ -336,8 +337,12 @@ class Notify(JsonObjectResource):
 
 
 def host_scheduler():
+    with HostProxy() as host_proxy:
+        return _check_installation_status(host_proxy)
+
+
+def _check_installation_status(host_proxy):
     LOGGER.info("start to execute scheduled tasks to check if the os has failed to install.")
-    host_proxy = HostProxy()
     failed_hosts = []
     after_update_time = None
     after_host_id = None

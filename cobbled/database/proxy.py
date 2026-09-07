@@ -53,9 +53,21 @@ class MysqlProxy:
             LOGGER.error("Mysql connection failed.")
             raise Exception("Database connection failed to be established: Mysql connection failed.")
 
+    def close(self):
+        """Close the database session and release its connection."""
+        session = getattr(self, "session", None)
+        if session is not None:
+            session.close()
+            self.session = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+
     def __del__(self):
-        if self.session:
-            self.session.close()
+        self.close()
 
     def insert(self, table, data):
         """
