@@ -95,8 +95,9 @@ class KsChecker:
 class InstallChecker:
     @staticmethod
     def check_host_list(host_list):
-        if not host_list or len(host_list) > 100:
-            return ResUtil.failed(HostCons.CHECK_HOST_LIST_TIPS)
+        check_result = HostChecker.check_host_list(host_list, dict)
+        if check_result:
+            return check_result
         for host in host_list:
             check_result = HostChecker.check_bmc_ip(host.get("bmc_ip"))
             if check_result:
@@ -104,6 +105,13 @@ class InstallChecker:
 
 
 class HostChecker:
+
+    @staticmethod
+    def check_host_list(host_list, item_type=None):
+        if not isinstance(host_list, list) or not host_list or len(host_list) > 100:
+            return ResUtil.failed(HostCons.CHECK_HOST_LIST_TIPS)
+        if item_type and any(not isinstance(host, item_type) for host in host_list):
+            return ResUtil.failed(HostCons.CHECK_HOST_LIST_TIPS)
 
     @staticmethod
     def check_page_no_and_page_size(page_no, page_size):

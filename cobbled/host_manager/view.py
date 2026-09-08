@@ -71,8 +71,9 @@ class BatchAddHost(JsonObjectResource):
 
         # 获取请求参数
         host_list = request.json.get("host_list")
-        if not host_list or len(host_list) > 100:
-            return ResUtil.failed(HostCons.CHECK_HOST_LIST_TIPS)
+        check_result = HostChecker.check_host_list(host_list, dict)
+        if check_result:
+            return check_result
 
         # 校验通过的hosts
         check_ok_list = []
@@ -207,8 +208,9 @@ class DeleteHost(JsonObjectResource):
         LOGGER.info("start to delete host.")
         # 校验请求参数
         host_list = request.json.get("host_list")
-        if not host_list or len(host_list) > 100:
-            return ResUtil.failed(HostCons.CHECK_HOST_LIST_TIPS)
+        check_result = HostChecker.check_host_list(host_list)
+        if check_result:
+            return check_result
 
         for host_id in host_list:
             check_result = HostChecker.check_host_id(host_id)
