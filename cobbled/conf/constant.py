@@ -100,6 +100,7 @@ class ISOCons:
     CHECK_ISO_ARCH_TIPS = "The iso arch can not be none and must be x86_64 or aarch64."
     CHECK_ISO_SUFFIX_TIPS = "The iso file suffix must be .iso."
     CHECK_ISO_EXITS_TIPS = "The iso file already exists in remote cobbler server."
+    MOUNT_ISO_FAILED_TIPS = "Failed to mount the iso file."
 
     UPLOAD_ISO_SUCCESS_TIPS = "The iso background import in progress, please refresh the query list later."
     DELETE_ISO_SUCCESS_TIPS = "The iso delete successfully."
