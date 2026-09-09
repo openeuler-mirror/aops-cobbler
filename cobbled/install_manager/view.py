@@ -56,7 +56,7 @@ os_installed_time = configuration.host.get("OS_INSTALLED_TIME")
 # 从配置文件里获取操作系统安装日志存放路径
 os_install_log_dir = configuration.host.get("OS_INSTALL_LOG_DIR")
 
-# 从配置文件里获取操作系统安装可使用的的IP范围
+# 从配置文件里获取操作系统安装可使用的IP范围
 os_start_ip = configuration.host.get("OS_START_IP")
 os_end_ip = configuration.host.get("OS_END_IP")
 
