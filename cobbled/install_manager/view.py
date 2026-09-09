@@ -367,6 +367,13 @@ def _check_installation_status(host_proxy):
         if not hosts:
             break
 
+        # Preserve the cursor before updates expire and refresh ORM objects.
+        # MySQL advances update_time via ON UPDATE CURRENT_TIMESTAMP when a
+        # host status changes, which would otherwise move this cursor past
+        # unprocessed hosts from the next batch.
+        after_update_time = hosts[-1].update_time
+        after_host_id = hosts[-1].host_id
+
         for host in hosts:
             interval_seconds = (datetime.now() - host.update_time).total_seconds()
             if interval_seconds < 300:
@@ -389,8 +396,6 @@ def _check_installation_status(host_proxy):
                 if host_proxy.update_host_info(host_info):
                     failed_hosts.append(host)
 
-        after_update_time = hosts[-1].update_time
-        after_host_id = hosts[-1].host_id
         if len(hosts) < HOST_SCHEDULER_BATCH_SIZE:
             break
 
