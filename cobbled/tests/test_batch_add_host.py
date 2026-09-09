@@ -110,6 +110,7 @@ class TestBatchAddHost(unittest.TestCase):
         self.assertEqual(RawHost.__table__.c.host_name.type.length, 63)
 
     def _post(self, hosts, proxy, encrypt=False, check_side_effect=None):
+        proxy.__enter__.return_value = proxy
         with self.app.test_request_context(json={"host_list": hosts}), ExitStack() as stack:
             stack.enter_context(patch.object(view, "HostProxy", return_value=proxy))
             stack.enter_context(patch.object(
