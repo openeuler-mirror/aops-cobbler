@@ -18,17 +18,19 @@ Description: Restful APIs for iso manager
 
 
 import os
+import subprocess
 
-from flask_restful import Resource
 from flask import request
-from cobbled.log.log import LOGGER
+from flask_restful import Resource
+
 from cobbled.conf import configuration
-from cobbled.conf.constant import ISOCons, InstallCons
+from cobbled.conf.constant import InstallCons, ISOCons
+from cobbled.log.log import LOGGER
 from cobbled.server.remote import RemoteServer
-from cobbled.util.response_util import ResUtil
-from cobbled.util.validate_util import ISOChecker
 from cobbled.util.file_util import FileUtil
 from cobbled.util.request_util import JsonObjectResource
+from cobbled.util.response_util import ResUtil
+from cobbled.util.validate_util import ISOChecker
 
 # 从配置文件里获取镜像文件上传地址
 upload_dir = configuration.iso.get("UPLOAD_DIR")
@@ -78,9 +80,21 @@ class UploadISO(Resource):
 
             # 挂载该iso文件
             mount_dir = '/mnt/' + distro_name
-            os.makedirs(mount_dir, mode=0o644, exist_ok=True)
-            os.system('umount ' + mount_dir)
-            os.system('mount ' + iso_full_path + ' ' + mount_dir)
+            os.makedirs(mount_dir, mode=0o755, exist_ok=True)
+            try:
+                if os.path.ismount(mount_dir):
+                    subprocess.run(
+                        ["umount", mount_dir], check=True, capture_output=True, text=True
+                    )
+                subprocess.run(
+                    ["mount", "-o", "loop,ro", iso_full_path, mount_dir],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+            except (subprocess.CalledProcessError, OSError) as e:
+                LOGGER.error("fail to mount iso file %s: %s", iso_full_path, str(e))
+                return ResUtil.success_or_failed(500, ISOCons.MOUNT_ISO_FAILED_TIPS)
 
             # 调用Cobbler API导入iso文件到Cobbler服务端
             options = {
