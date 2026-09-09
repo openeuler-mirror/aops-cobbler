@@ -44,6 +44,7 @@ class TestResUtil(unittest.TestCase):
     def test_failed_with_none_omits_data(self):
         response = ResUtil.failed("failed message")
         self.assertEqual(response.json, {"code": 400, "msg": "failed message"})
+        self.assertEqual(response.status_code, 400)
 
     def test_failed_with_falsy_values_includes_data(self):
         for falsy_value in [[], {}, 0, False, ""]:
@@ -53,6 +54,7 @@ class TestResUtil(unittest.TestCase):
                     response.json,
                     {"code": 400, "msg": "failed message", "data": falsy_value}
                 )
+                self.assertEqual(response.status_code, 400)
 
     def test_success_or_failed_with_falsy_values(self):
         response = ResUtil.success_or_failed(200, "ok", [])
@@ -60,6 +62,12 @@ class TestResUtil(unittest.TestCase):
 
         response_none = ResUtil.success_or_failed(200, "ok")
         self.assertEqual(response_none.json, {"code": 200, "msg": "ok"})
+
+    def test_success_or_failed_sets_http_status_code(self):
+        for status_code in [200, 400, 500]:
+            with self.subTest(status_code=status_code):
+                response = ResUtil.success_or_failed(status_code, "message")
+                self.assertEqual(response.status_code, status_code)
 
 
 if __name__ == "__main__":
