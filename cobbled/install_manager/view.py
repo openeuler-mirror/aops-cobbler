@@ -167,19 +167,19 @@ class AutoInstall(JsonObjectResource):
             profile = remote_server.get_profile(distro_name)
             ks_content = FileUtil.read_file_content(ks_full_path)
 
-            # 8，在ks内容中添加系统安装日志转发配置
+            # 8，在ks文件中添加系统安装日志转发配置
             client_ip = configuration.cobbler_client.get('IP')
             port = configuration.cobbler_client.get('PORT')
             ks_content += InstallCons.INSTALL_LOG_FORWARD_CMD.replace('ip_addr', client_ip)
 
             # 读取操作系统安装完成以后需要执行的脚本:ipmitool等自定义rpm包的安装
-            # 在ks文件内容中添加调用通知接口内容，用于在操作系统安装完成后更新主机状态，否则aops-cobbler服务将无法知道操作系统是否已经安装完成
+            # 在ks文件中添加调用通知接口内容，用于在操作系统安装完成后更新主机状态，否则aops-cobbler服务将无法知道操作系统是否已经安装完成
             after_os_installed = FileUtil.read_file_content("/opt/aops/script/after_os_installed.sh")
             after_os_installed = render_after_os_installed_script(
                 after_os_installed, client_ip, port, subnet_mask, install_rpm)
             ks_content = ks_content + "\n%post\n" + after_os_installed + "\n%end\n"
 
-            # 11，将自定义脚本内容添加到在ks内容中
+            # 11，将自定义脚本内容添加到ks文件中
             if script_name:
                 script_content = FileUtil.read_file_content(script_full_path)
                 ks_content = ks_content + "\n%post\n" + script_content + "\n%end\n"
