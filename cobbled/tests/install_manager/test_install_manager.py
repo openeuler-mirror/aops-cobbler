@@ -39,6 +39,10 @@ class TestGetDefaultGateway(unittest.TestCase):
     def test_accepts_string_mask(self):
         self.assertEqual(get_default_gateway("10.10.192.213", "24"), "10.10.192.254")
 
+    def test_accepts_dotted_netmask(self):
+        self.assertEqual(get_default_gateway("10.10.192.213", "255.255.255.0"),
+                         "10.10.192.254")
+
     def test_after_install_script_uses_configured_subnet_mask(self):
         script_path = Path(__file__).parents[3] / "script" / "after_os_installed.sh"
         script = script_path.read_text(encoding="utf-8")
