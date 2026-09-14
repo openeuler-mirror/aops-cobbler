@@ -55,6 +55,17 @@ class TestHostScheduler(unittest.TestCase):
     def test_checks_all_installing_hosts_across_batches(self):
         engine = create_engine("sqlite:///:memory:")
         Base.metadata.create_all(engine)
+        with engine.begin() as connection:
+            connection.exec_driver_sql("""
+                CREATE TRIGGER raw_host_update_time
+                AFTER UPDATE ON raw_host
+                FOR EACH ROW
+                BEGIN
+                    UPDATE raw_host
+                       SET update_time = datetime(OLD.update_time, '+1 day')
+                     WHERE host_id = NEW.host_id;
+                END
+            """)
         session = sessionmaker(bind=engine)()
         self.addCleanup(engine.dispose)
         self.addCleanup(session.close)
