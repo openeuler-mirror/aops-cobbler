@@ -2,7 +2,6 @@ English | [简体中文](./README.md)
 
 # aops-cobbler
 
-English | [简体中文](./README.md)
 
 ## Overview
 
