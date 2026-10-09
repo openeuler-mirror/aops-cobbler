@@ -202,7 +202,7 @@ class ScriptChecker:
     def check_script_name(script_name):
         # script_name不能为空，且必须满足26个大小写字母、数字、下划线、中划线
         pattern = re.compile('^[A-Za-z0-9_-]+$')
-        if not script_name or not pattern.match(script_name) or len(str(script_name)) > 128:
+        if not isinstance(script_name, str) or not pattern.fullmatch(script_name) or len(script_name) > 128:
             return ResUtil.failed(ScriptCons.CHECK_SCRIPT_NAME_TIPS)
 
     @staticmethod

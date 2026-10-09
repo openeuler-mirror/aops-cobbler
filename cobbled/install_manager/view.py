@@ -41,6 +41,7 @@ from cobbled.util.validate_util import (
     InstallChecker,
     ISOChecker,
     KsChecker,
+    ScriptChecker,
     run_ipmitool,
 )
 
@@ -135,6 +136,11 @@ class AutoInstall(JsonObjectResource):
         if check_result:
             return check_result
 
+        if script_name is not None and script_name != "":
+            check_result = ScriptChecker.check_script_name(script_name)
+            if check_result:
+                return check_result
+
         try:
             # 3，检查ks文件是否存在
             ks_full_path = os.path.join(ks_dir, ks_name + ".ks")
@@ -143,7 +149,11 @@ class AutoInstall(JsonObjectResource):
 
             # 4，如果脚本名称不为空，则校验脚本文件是否存在
             if script_name:
-                script_full_path = os.path.join(script_dir, script_name + ".sh")
+                script_root = os.path.realpath(script_dir)
+                script_full_path = os.path.realpath(os.path.join(script_root, script_name + ".sh"))
+                # 符号链接解析后的路径也必须位于脚本目录内。
+                if os.path.commonpath([script_root, script_full_path]) != script_root:
+                    return ResUtil.failed(ScriptCons.CHECK_SCRIPT_NAME_TIPS)
                 if not os.path.exists(script_full_path):
                     return ResUtil.failed(ScriptCons.CHECK_SCRIPT_EXITS_TIPS)
 
