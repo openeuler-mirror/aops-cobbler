@@ -66,6 +66,10 @@ class Config:
 
     def _set_section_value(self, conf, section):
         temp_config = dict()
+        # Use declared configuration types, never infer them from string contents.
+        section_defaults = getattr(default_config, section, {})
+        if not isinstance(section_defaults, dict):
+            section_defaults = {}
         for option in conf.items(section):
             try:
                 (key, value) = option
@@ -73,12 +77,14 @@ class Config:
                 continue
             if not value:
                 continue
-            if value.isdigit():
-                value = int(value)
-            elif MULTIPLICATION_EXPRESSION.fullmatch(value):
-                value = math.prod(int(factor.strip()) for factor in value.split("*"))
-            elif value.lower() in ("true", "false"):
-                value = True if value.lower() == "true" else False
+            value_type = type(section_defaults.get(key.upper()))
+            if value_type is int:
+                if MULTIPLICATION_EXPRESSION.fullmatch(value):
+                    value = math.prod(int(factor.strip()) for factor in value.split("*"))
+                else:
+                    value = int(value)
+            elif value_type is bool:
+                value = conf.getboolean(section, key)
             temp_config[key.upper()] = value
 
         if not temp_config:
