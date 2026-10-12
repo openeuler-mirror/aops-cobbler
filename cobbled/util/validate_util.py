@@ -55,7 +55,7 @@ class ISOChecker:
     def check_iso_name(iso_name):
         # iso_name不能为空，且必须满足26个大小写字母、数字、下划线、中划线
         pattern = re.compile('^[A-Za-z0-9_-]+$')
-        if not iso_name or not pattern.match(iso_name) or len(str(iso_name)) > 128:
+        if not isinstance(iso_name, str) or not pattern.fullmatch(iso_name) or len(iso_name) > 128:
             return ResUtil.failed(ISOCons.CHECK_ISO_NAME_TIPS)
         arch_list = {"-x86", "_x86", "-aarch64", "_aarch64"}
         for arch in arch_list:
@@ -83,12 +83,12 @@ class KsChecker:
     def check_ks_name(ks_name):
         # ks_name不能为空，且必须满足26个大小写字母、数字、下划线、中划线
         pattern = re.compile('^[A-Za-z0-9_-]+$')
-        if not ks_name or not pattern.match(ks_name) or len(str(ks_name)) > 128:
+        if not isinstance(ks_name, str) or not pattern.fullmatch(ks_name) or len(ks_name) > 128:
             return ResUtil.failed(KsCons.CHECK_KS_NAME_TIPS)
 
     @staticmethod
     def check_ks_content(ks_content):
-        if not ks_content:
+        if not isinstance(ks_content, str) or not ks_content:
             return ResUtil.failed(KsCons.CHECK_KS_CONTENT_TIPS)
 
 
