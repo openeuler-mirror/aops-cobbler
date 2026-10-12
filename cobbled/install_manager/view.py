@@ -209,6 +209,7 @@ class AutoInstall(JsonObjectResource):
 
             with HostProxy() as host_proxy:
                 host_ip_list = []  # 记录已经使用的IP地址
+                prepared_hosts = []
                 for host in host_list:
                     host["result"] = "failed"
                     result_list.append(host)
@@ -235,29 +236,25 @@ class AutoInstall(JsonObjectResource):
                         host["reason"] = check_result.json["msg"]
                         continue
 
-                    # 18，调用ipmitool命令设置服务器由PXE启动，并下发主机开机或者重启指令
-                    ipmi_log = 'ipmitool -H ' + host.get("bmc_ip") + ' -I lanplus -U ' + host.get("bmc_user_name")
-                    bmc_passwd = AesUtil.decrypt(host.get("bmc_passwd"))
-
-                    if run_ipmitool(host.get("bmc_ip"), host.get("bmc_user_name"), bmc_passwd,
-                                    "chassis", "bootdev", "pxe") or \
-                            run_ipmitool(host.get("bmc_ip"), host.get("bmc_user_name"), bmc_passwd,
-                                         "power", "reset"):
-                        LOGGER.error(ipmi_log + '' + InstallCons.IPMI_COMMAND_EXECUTE_TIPS)
-                        host["reason"] = InstallCons.IPMI_COMMAND_EXECUTE_TIPS
-                        continue
-
-                    # 19，创建cobbler system，将主机的mac地址写入DHCP配置文件的白名单里面，并同步DHCP服务生效
+                    # 18，先准备所有主机的system和DHCP配置，暂不触发重启
                     system_id = remote_server.new_system(token)
                     host_name = hosts[0].host_name + "-" + str(hosts[0].host_id)
-                    remote_server.modify_system(system_id, "name", host_name, token)
-                    remote_server.modify_system(system_id, "hostname", host_name, token)
-                    remote_server.modify_system(system_id, "profile", profile.get("name"), token)
-                    remote_server.modify_system(system_id, 'modify_interface', {
-                        "macaddress-net0": hosts[0].host_mac,
-                        "ipaddress-net0": host_ip,
-                        "dhcptag-net0": "default"
-                    }, token)
+                    system_settings = (
+                        ("name", host_name),
+                        ("hostname", host_name),
+                        ("profile", profile.get("name")),
+                        ("modify_interface", {
+                            "macaddress-net0": hosts[0].host_mac,
+                            "ipaddress-net0": host_ip,
+                            "dhcptag-net0": "default"
+                        }),
+                    )
+                    if not system_id or not all(
+                            remote_server.modify_system(system_id, field, value, token)
+                            for field, value in system_settings):
+                        LOGGER.error(InstallCons.COBBLER_SYSTEM_TIPS)
+                        host["reason"] = InstallCons.COBBLER_SYSTEM_TIPS
+                        continue
 
                     # 保存system、同步DHCP生效
                     if not remote_server.save_system(system_id, token) or not remote_server.sync_dhcp(token):
@@ -266,27 +263,51 @@ class AutoInstall(JsonObjectResource):
                         continue
 
                     host_ip_list.append(host_ip)
+                    prepared_hosts.append((host, hosts[0].host_id, host_ip))
 
-                    # 20，持久化分配的IP并更新主机状态为装机中
+                # 19，所有Cobbler写入结束后修正PXE参数，避免后续同步覆盖修正结果
+                try:
+                    update_pxe_config_files()
+                except (OSError, UnicodeError):
+                    LOGGER.exception(InstallCons.MODIFY_PXE_LINUX_DEFAULT_TIPS)
+                    for host, _, _ in prepared_hosts:
+                        host["reason"] = InstallCons.MODIFY_PXE_LINUX_DEFAULT_TIPS
+                    return ResUtil.failed(InstallCons.MODIFY_PXE_LINUX_DEFAULT_TIPS, result_list)
+
+                for host, host_id, host_ip in prepared_hosts:
+                    # 20，启动前持久化分配的IP并更新主机状态为装机中
                     update_result = host_proxy.update_host_info({
-                        "host_id": hosts[0].host_id,
+                        "host_id": host_id,
                         "host_ip": host_ip,
                         "status": 3
                     })
                     if not update_result:
-                        LOGGER.error(f'The host update failed:{str(hosts[0].host_id)}')
+                        LOGGER.error(f'The host update failed:{str(host_id)}')
                         host["reason"] = HostCons.UPDATE_HOST_FAILED_TIPS
+                        continue
+
+                    # 21，配置和状态均已准备好，再设置PXE启动并重启主机
+                    try:
+                        bmc_passwd = AesUtil.decrypt(host.get("bmc_passwd"))
+                        start_failed = run_ipmitool(
+                            host.get("bmc_ip"), host.get("bmc_user_name"), bmc_passwd,
+                            "chassis", "bootdev", "pxe") or run_ipmitool(
+                            host.get("bmc_ip"), host.get("bmc_user_name"), bmc_passwd,
+                            "power", "reset")
+                    except Exception:
+                        LOGGER.exception("Failed to start installation for host %s", host_id)
+                        start_failed = True
+
+                    if start_failed:
+                        LOGGER.error(InstallCons.IPMI_COMMAND_EXECUTE_TIPS)
+                        host["reason"] = InstallCons.IPMI_COMMAND_EXECUTE_TIPS
+                        if not host_proxy.update_host_info({"host_id": host_id, "status": 4}):
+                            LOGGER.error("Failed to persist installation failure for host %s", host_id)
+                            host["reason"] += "; " + HostCons.UPDATE_HOST_FAILED_TIPS
                         continue
 
                     host["result"] = "succeed"
                     host["reason"] = ""
-
-            # 21，新版本的Anaconda做了调整，参数前必须要加inst.前缀，否则系统无法识别
-            try:
-                update_pxe_config_files()
-            except (OSError, UnicodeError):
-                LOGGER.exception(InstallCons.MODIFY_PXE_LINUX_DEFAULT_TIPS)
-                return ResUtil.failed(InstallCons.MODIFY_PXE_LINUX_DEFAULT_TIPS, result_list)
         except Exception as e:
             LOGGER.error(f'fail to auto install:{str(e)}')
             code = 400
