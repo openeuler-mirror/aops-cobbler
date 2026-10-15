@@ -55,12 +55,14 @@ class TestHostProxyQueryHosts(unittest.TestCase):
 
     @patch("cobbled.database.host.RawHost")
     def test_query_hosts_empty(self, mock_host):
-        """Test query_hosts returns empty when no results."""
-        proxy = HostProxy.__new__(Proxy)
+        """Test query_hosts returns empty result when no hosts exist."""
+        proxy = HostProxy.__new__(HostProxy)
         proxy.session = MagicMock()
         params = {"host_id": None, "host_name": None, "bmc_ip": None, "page_no": 1, "page_size": 10}
-        result = proxy.query_hosts(params)
-        self.assertIsNotNone(result)
+        with patch.object(proxy, "count", return_value=(True, 0)):
+            query_result, data = proxy.query_hosts(params)
+        self.assertTrue(query_result)
+        self.assertEqual(data, {"host_infos": [], "total_count": 0, "total_page": 0})
 
 
 if __name__ == "__main__":
