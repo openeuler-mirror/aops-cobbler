@@ -27,7 +27,7 @@ from sqlalchemy.orm import sessionmaker
 from cobbled.database.host import HostProxy
 from cobbled.database.table import Base, RawHost
 from cobbled.install_manager import view
-from cobbled.install_manager.view import get_default_gateway, render_after_os_installed_script
+from cobbled.install_manager.workflow import get_default_gateway, render_after_os_installed_script
 
 
 class TestGetDefaultGateway(unittest.TestCase):

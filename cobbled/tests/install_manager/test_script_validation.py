@@ -21,7 +21,7 @@ from unittest.mock import MagicMock, patch
 from flask import Flask
 
 from cobbled.conf.constant import ScriptCons
-from cobbled.install_manager import view
+from cobbled.install_manager import view, workflow
 
 
 class TestAutoInstallScriptValidation(unittest.TestCase):
@@ -55,9 +55,9 @@ class TestAutoInstallScriptValidation(unittest.TestCase):
         host_proxy.return_value.__enter__.return_value.query_host_by_bmc_ip.return_value = (True, [])
         self.context.enter_context(patch.object(view, "script_dir", str(self.script_dir)))
         self.context.enter_context(patch.object(view, "ks_dir", str(self.ks_dir)))
-        self.context.enter_context(patch.object(view, "update_pxe_config_files"))
+        self.context.enter_context(patch.object(workflow, "update_pxe_config_files"))
         self.read_file = self.context.enter_context(patch.object(
-            view.FileUtil, "read_file_content", side_effect=self.read_content))
+            workflow.FileUtil, "read_file_content", side_effect=self.read_content))
 
     @staticmethod
     def read_content(path):

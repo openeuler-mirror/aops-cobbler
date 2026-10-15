@@ -175,13 +175,20 @@ class HostChecker:
 
     @staticmethod
     def check_bmc_connection(host):
+        error = HostChecker.bmc_connection_error(host)
+        if error:
+            return ResUtil.failed(error)
+
+    @staticmethod
+    def bmc_connection_error(host):
+        """Return a plain error message so installation needs no Flask context."""
         if configuration.host.get("CHECK_BMC_CONNECTION") == 0:
             return
         bmc_ip = host.get("bmc_ip")
         bmc_user_name = host.get("bmc_user_name")
         bmc_passwd = AesUtil.decrypt(host.get("bmc_passwd"))
         if run_ipmitool(bmc_ip, bmc_user_name, bmc_passwd, "power", "status"):
-            return ResUtil.failed(HostCons.CHECK_BMC_CONNECTION_TIPS)
+            return HostCons.CHECK_BMC_CONNECTION_TIPS
 
     @staticmethod
     def check_bmc(host):
