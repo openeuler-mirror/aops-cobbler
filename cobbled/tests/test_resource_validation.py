@@ -1,11 +1,14 @@
 """Regression tests for ISO, kickstart and script field validation."""
 
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from flask import Flask
 
-from cobbled.conf.constant import ISOCons, KsCons, ScriptCons
-from cobbled.util.validate_util import ISOChecker, KsChecker, ScriptChecker
+from cobbled.conf.constant import HostCons, ISOCons, KsCons, ScriptCons
+from cobbled.util.validate_util import (
+    ISOChecker, InstallChecker, KsChecker, ScriptChecker)
 
 
 class TestResourceValidation(unittest.TestCase):
@@ -56,6 +59,60 @@ class TestResourceValidation(unittest.TestCase):
 
     def test_kickstart_content_accepts_nonempty_multiline_text(self):
         self.assertIsNone(KsChecker.check_ks_content("lang en_US.UTF-8\n%packages\n@core\n%end\n"))
+
+
+class TestResourceExtraValidation(unittest.TestCase):
+    """Tests for ISO arch/suffix, script file and host list validation."""
+
+    def setUp(self):
+        context = Flask(__name__).app_context()
+        context.push()
+        self.addCleanup(context.pop)
+
+    def assert_rejected(self, response, message):
+        self.assertIsNotNone(response)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json, {"code": 400, "msg": message})
+
+    @patch("cobbled.util.validate_util.configuration")
+    def test_check_iso_arch(self, mock_config):
+        mock_config.iso.get.return_value = "x86_64,aarch64"
+        self.assertIsNone(ISOChecker.check_iso_arch("x86_64"))
+        self.assertIsNone(ISOChecker.check_iso_arch("aarch64"))
+        for value in ("riscv64", "", None):
+            with self.subTest(value=value):
+                self.assert_rejected(ISOChecker.check_iso_arch(value),
+                                     ISOCons.CHECK_ISO_ARCH_TIPS)
+
+    def test_check_iso_suffix(self):
+        self.assertIsNone(ISOChecker.check_iso_suffix("demo.iso"))
+        for value in ("demo.txt", "demo", "demo.ISO"):
+            with self.subTest(value=value):
+                self.assert_rejected(ISOChecker.check_iso_suffix(value),
+                                     ISOCons.CHECK_ISO_SUFFIX_TIPS)
+
+    def test_check_script_file(self):
+        self.assertIsNone(ScriptChecker.check_script_file(
+            SimpleNamespace(filename="demo.sh")))
+        self.assert_rejected(ScriptChecker.check_script_file(None),
+                             ScriptCons.CHECK_SCRIPT_FILE_TIPS)
+        self.assert_rejected(ScriptChecker.check_script_file(
+            SimpleNamespace(filename="")),
+            ScriptCons.CHECK_SCRIPT_FILE_TIPS)
+        self.assert_rejected(ScriptChecker.check_script_file(
+            SimpleNamespace(filename="demo.txt")),
+            ScriptCons.CHECK_SCRIPT_SUFFIX_TIPS)
+        self.assert_rejected(ScriptChecker.check_script_file(
+            SimpleNamespace(filename="demo")),
+            ScriptCons.CHECK_SCRIPT_SUFFIX_TIPS)
+
+    def test_check_host_list_rejects_invalid_bmc_ip(self):
+        valid_host = {"bmc_ip": "192.0.2.10"}
+        self.assertIsNone(InstallChecker.check_host_list([valid_host]))
+        bad_list = [dict(valid_host), dict(valid_host, bmc_ip="not-an-ip")]
+        self.assert_rejected(
+            InstallChecker.check_host_list(bad_list),
+            HostCons.CHECK_BMC_IP_TIPS)
 
 
 if __name__ == "__main__":
