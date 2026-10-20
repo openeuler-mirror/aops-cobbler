@@ -23,6 +23,7 @@ from flask import Flask
 
 from cobbled.conf.constant import HostCons
 from cobbled.install_manager import view as install_view
+from cobbled.install_manager import workflow
 from cobbled.util import validate_util
 from cobbled.util.validate_util import HostChecker
 
@@ -153,8 +154,8 @@ class TestCommandInjectionRegressions(unittest.TestCase):
             "inst.ks=http://old inst.repo=http://old inst.kssendmac\n"
         )
 
-        updated = install_view.prefix_pxe_boot_arguments(original)
-        updated_twice = install_view.prefix_pxe_boot_arguments(updated)
+        updated = workflow.prefix_pxe_boot_arguments(original)
+        updated_twice = workflow.prefix_pxe_boot_arguments(updated)
 
         self.assertEqual(updated, expected)
         self.assertEqual(updated_twice, expected)
@@ -172,8 +173,8 @@ class TestCommandInjectionRegressions(unittest.TestCase):
             with open(os.path.join(config_dir, ".lock"), "w", encoding="utf-8") as hidden_file:
                 hidden_file.write(original)
 
-            first_update_count = install_view.update_pxe_config_files(config_dir)
-            second_update_count = install_view.update_pxe_config_files(config_dir)
+            first_update_count = workflow.update_pxe_config_files(config_dir)
+            second_update_count = workflow.update_pxe_config_files(config_dir)
 
             with open(config_path, "r", encoding="utf-8") as config_file:
                 self.assertEqual(config_file.read(), expected)
