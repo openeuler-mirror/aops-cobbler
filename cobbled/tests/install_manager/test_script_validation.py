@@ -16,6 +16,7 @@ import tempfile
 import unittest
 from contextlib import ExitStack
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from flask import Flask
@@ -52,7 +53,16 @@ class TestAutoInstallScriptValidation(unittest.TestCase):
         remote_factory.return_value.get_remote_server.return_value = (self.remote, "token")
         self.remote_factory = remote_factory
         host_proxy = self.context.enter_context(patch.object(view, "HostProxy"))
-        host_proxy.return_value.__enter__.return_value.query_host_by_bmc_ip.return_value = (True, [])
+        proxy = host_proxy.return_value.__enter__.return_value
+        proxy.query_host_by_bmc_ip.return_value = (True, [SimpleNamespace(
+            host_id="host-1", host_name="host", host_mac="aa:bb:cc:dd:ee:ff",
+            bmc_user_name="user", bmc_passwd="encrypted")])
+        proxy.query_host_by_host_ip.return_value = (True, [])
+        lifecycle = self.context.enter_context(patch.object(workflow, "InstallationLifecycle"))
+        lifecycle.return_value.begin.return_value = ("round", "system-round")
+        power = self.context.enter_context(patch.object(view, "IPMIPower"))
+        power.return_value.check_connection.return_value = None
+        power.return_value.start.return_value = 0
         self.context.enter_context(patch.object(view, "script_dir", str(self.script_dir)))
         self.context.enter_context(patch.object(view, "ks_dir", str(self.ks_dir)))
         self.context.enter_context(patch.object(workflow, "update_pxe_config_files"))

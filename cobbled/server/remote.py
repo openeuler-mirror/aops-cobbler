@@ -18,8 +18,36 @@ Description: cobbler remote server.
 
 
 import xmlrpc.client
+import http.client
 from cobbled.conf import configuration
 from cobbled.log.log import LOGGER
+
+
+class TimeoutTransport(xmlrpc.client.Transport):
+    def __init__(self, timeout):
+        super().__init__()
+        self.timeout = timeout
+
+    def make_connection(self, host):
+        if self._connection and host == self._connection[0]:
+            return self._connection[1]
+        chost, self._extra_headers, _ = self.get_host_info(host)
+        self._connection = host, http.client.HTTPConnection(chost, timeout=self.timeout)
+        return self._connection[1]
+
+
+class TimeoutSafeTransport(xmlrpc.client.SafeTransport):
+    def __init__(self, timeout):
+        super().__init__()
+        self.timeout = timeout
+
+    def make_connection(self, host):
+        if self._connection and host == self._connection[0]:
+            return self._connection[1]
+        chost, self._extra_headers, x509 = self.get_host_info(host)
+        self._connection = host, http.client.HTTPSConnection(
+            chost, timeout=self.timeout, context=self.context, **(x509 or {}))
+        return self._connection[1]
 
 
 class RemoteServer:
@@ -27,10 +55,11 @@ class RemoteServer:
     RemoteServer class.
     """
 
-    def __init__(self):
+    def __init__(self, timeout=None):
         """
         Class instance initialization.
         """
+        self.timeout = timeout
         self.__server = configuration.cobbler_server.get("SERVER")
         self.__user = configuration.cobbler_server.get("USER")
         self.__passwd = configuration.cobbler_server.get("PASSWD")
@@ -54,7 +83,11 @@ class RemoteServer:
         """
         self.check_param()
         try:
-            remote_server = xmlrpc.client.Server(self.__server)
+            options = {}
+            if self.timeout is not None:
+                transport = TimeoutSafeTransport if self.__server.startswith("https:") else TimeoutTransport
+                options["transport"] = transport(self.timeout)
+            remote_server = xmlrpc.client.Server(self.__server, **options)
             token = remote_server.login(self.__user, self.__passwd)
             return remote_server, token
         except Exception as e:

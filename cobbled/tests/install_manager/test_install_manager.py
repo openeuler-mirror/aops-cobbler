@@ -84,6 +84,9 @@ class TestHostScheduler(unittest.TestCase):
                 bmc_passwd="password",
                 host_mac=f"00:00:00:00:00:{index:02x}",
                 status=3,
+                installation_round=f"round-{index}",
+                installation_system=f"system-{index}",
+                installation_started_at=update_time,
                 update_time=update_time,
             ))
         session.commit()
@@ -105,7 +108,7 @@ class TestHostScheduler(unittest.TestCase):
         self.assertEqual(installing_count, 0)
         self.assertEqual(failed_count, 11)
         self.assertEqual(remote_server.remove_system.call_count, 11)
-        remote_server.sync_dhcp.assert_called_once_with("token")
+        self.assertEqual(remote_server.sync_dhcp.call_count, 11)
 
 
 if __name__ == "__main__":

@@ -7,6 +7,11 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from cobbled.database.table import Base, RawHost, InstallationCleanup
+from cobbled.install_manager.lifecycle import InstallationLifecycle
+
 from cobbled.conf.constant import HostCons, InstallCons
 from cobbled.install_manager import power, workflow
 from cobbled.install_manager.power import IPMIPower
@@ -31,7 +36,30 @@ class TestAutoInstallBootOrder(unittest.TestCase):
                 bmc_user_name="test", bmc_passwd="encrypted-test-password")
             for index in (1, 2)
         }
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        self.db = sessionmaker(bind=engine)()
+        self.addCleanup(engine.dispose)
+        self.addCleanup(self.db.close)
+        for bmc, host in self.hosts.items():
+            self.db.add(RawHost(**vars(host), bmc_ip=bmc, status=0))
+        self.db.commit()
+        case = self
+
+        class RecordingLifecycle(InstallationLifecycle):
+            def prepare_start(self, host_id, round_id, host_ip):
+                if not case.persist({"host_id": host_id, "status": 3}):
+                    raise RuntimeError("persist failed")
+                super().prepare_start(host_id, round_id, host_ip)
+
+            def finish(self, host_id, round_id, **kwargs):
+                if not case.persist({"host_id": host_id, "status": 4}):
+                    raise RuntimeError("persist failed")
+                super().finish(host_id, round_id, **kwargs)
+
+        self.lifecycle_factory = RecordingLifecycle
         self.proxy = Mock()
+        self.proxy.session = self.db
         self.proxy.__enter__ = Mock(return_value=self.proxy)
         self.proxy.__exit__ = Mock(return_value=False)
         self.proxy.query_host_by_bmc_ip.side_effect = lambda bmc: (True, [self.hosts[bmc]])
@@ -69,6 +97,7 @@ class TestAutoInstallBootOrder(unittest.TestCase):
             connect_cobbler=lambda: (self.remote, "token"),
             host_store=lambda: self.proxy,
             power=IPMIPower(),
+            lifecycle_factory=self.lifecycle_factory,
         )
 
     def sync(self, token):
@@ -125,6 +154,10 @@ class TestAutoInstallBootOrder(unittest.TestCase):
         return 0
 
     def install(self, host_count=1):
+        self.db.rollback()
+        self.db.query(InstallationCleanup).delete()
+        self.db.query(RawHost).update({RawHost.status: 0, RawHost.installation_round: None})
+        self.db.commit()
         self.events.clear()
         self.boot_snapshots.clear()
         self.states.clear()
@@ -138,6 +171,12 @@ class TestAutoInstallBootOrder(unittest.TestCase):
         self.assertEqual(response.code, 200)
         self.assertEqual([host["result"] for host in response.data], ["succeed", "succeed"])
         self.assertEqual(len(self.boot_snapshots), 2)
+        rounds = {host["installation_round"] for host in response.data}
+        kernel_rounds = {call.args[2]["aops_installation_round"]
+                         for call in self.remote.modify_system.call_args_list
+                         if call.args[1] == "kernel_options"}
+        self.assertEqual(rounds, kernel_rounds)
+        self.assertEqual(len(rounds), 2)
         for host_id, config, status in self.boot_snapshots:
             self.assertEqual(status, 3)
             self.assertIn("inst.ks=", config)
@@ -191,7 +230,7 @@ class TestAutoInstallBootOrder(unittest.TestCase):
         response = self.install(host_count=2)
         self.assertEqual(response.code, 400)
         self.assertEqual(self.boot_snapshots, [])
-        self.assertEqual(self.states, {})
+        self.assertEqual(self.states, {"1": 4, "2": 4})
         for host in response.data:
             self.assertEqual(host["result"], "failed")
             self.assertEqual(host["reason"], InstallCons.MODIFY_PXE_LINUX_DEFAULT_TIPS)
@@ -225,9 +264,34 @@ class TestAutoInstallBootOrder(unittest.TestCase):
         result = self.install()
         self.assertEqual(result.code, 400)
         self.assertEqual(result.msg, "storage failed")
-        self.assertEqual(result.data, [{"bmc_ip": "192.0.2.1", "result": "failed"}])
+        self.assertEqual(result.data, [{"bmc_ip": "192.0.2.1", "result": "failed", "reason": "storage failed"}])
         self.assertEqual(self.boot_snapshots, [])
         self.proxy.__exit__.assert_called_once()
+
+    def test_pending_cleanup_skips_only_blocked_host(self):
+        original_begin = self.lifecycle_factory.begin
+        def begin(lifecycle, host_id):
+            if host_id == "1":
+                old_round, _ = original_begin(lifecycle, host_id)
+                lifecycle.finish(host_id, old_round, succeeded=False)
+            return original_begin(lifecycle, host_id)
+        with patch.object(self.lifecycle_factory, "begin", begin):
+            response = self.install(host_count=2)
+        self.assertEqual(response.data[0]["reason"], "上次安装配置尚未清理完成")
+        self.assertEqual(response.data[1]["result"], "succeed")
+        self.assertEqual([host_id for host_id, _, _ in self.boot_snapshots], ["2"])
+
+    def test_blocked_batch_does_not_change_remote_configuration(self):
+        from cobbled.install_manager.lifecycle import InstallationConflict
+        with patch.object(self.lifecycle_factory, "begin",
+                          side_effect=InstallationConflict("上次安装配置尚未清理完成")):
+            response = self.install()
+        self.assertEqual(response.data[0]["result"], "failed")
+        self.remote.write_autoinstall_template.assert_not_called()
+        self.remote.modify_profile.assert_not_called()
+        self.remote.new_system.assert_not_called()
+        self.remote.sync.assert_not_called()
+        self.assertEqual(self.boot_snapshots, [])
 
     def test_remote_exception_does_not_open_host_storage(self):
         self.remote.get_distro.side_effect = RuntimeError("remote failed")

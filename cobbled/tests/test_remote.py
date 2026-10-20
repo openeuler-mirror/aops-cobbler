@@ -94,5 +94,16 @@ class TestRemoteServerConnection(unittest.TestCase):
         mock_xmlrpc.client.Server.assert_not_called()
 
 
+class TestRemoteTimeout(unittest.TestCase):
+    def test_http_and_https_connections_have_timeout(self):
+        from cobbled.server.remote import TimeoutTransport, TimeoutSafeTransport
+        for transport, target in ((TimeoutTransport, "HTTPConnection"),
+                                  (TimeoutSafeTransport, "HTTPSConnection")):
+            with self.subTest(transport=transport), patch(
+                    "cobbled.server.remote.http.client." + target) as connection:
+                transport(30).make_connection("example.test")
+                self.assertEqual(connection.call_args.kwargs["timeout"], 30)
+
+
 if __name__ == "__main__":
     unittest.main()

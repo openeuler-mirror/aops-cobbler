@@ -11,6 +11,21 @@ CREATE TABLE IF NOT EXISTS `raw_host`  (
   `host_mac` varchar(18) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `created_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `installation_round` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL,
+  `installation_started_at` DATETIME NULL,
+  `installation_system` varchar(160) NULL,
   `status` int(11) Not NULL DEFAULT 0,
   PRIMARY KEY (`host_id`) USING BTREE
 ) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci ROW_FORMAT = Dynamic;
+
+CREATE TABLE IF NOT EXISTS installation_cleanup (
+  host_id varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  round_id varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  system_name varchar(160) NOT NULL,
+  state varchar(16) NOT NULL DEFAULT 'pending',
+  failures int NOT NULL DEFAULT 0,
+  next_attempt_at DATETIME NULL,
+  last_error varchar(512) NULL,
+  PRIMARY KEY (host_id),
+  KEY cleanup_due (state, next_attempt_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
