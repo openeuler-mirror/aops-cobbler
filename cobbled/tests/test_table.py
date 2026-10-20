@@ -14,6 +14,9 @@ Description: unit tests for database/table.py
 """
 import unittest
 
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+
 from cobbled.database.table import Base, RawHost, MyBase
 
 
@@ -46,11 +49,26 @@ class TestRawHost(unittest.TestCase):
         self.assertIsNotNone(RawHost.host_mac)
 
     def test_host_id_default(self):
-        """Test RawHost host_id has default value."""
-        import uuid
+        """Test RawHost host_id gets a uuid4 value when inserted."""
+        # Column default is applied at INSERT time by the ORM, not on
+        # instance creation, so verify it through a real insert.
+        engine = create_engine("sqlite://")
+        Base.metadata.create_all(engine)
         host = RawHost()
-        self.assertIsNotNone(host.host_id)
-        self.assertIsInstance(host.host_id, str)
+        host.host_name = "test-host"
+        host.bmc_ip = "10.0.0.1"
+        host.bmc_user_name = "admin"
+        host.bmc_passwd = "secret"
+        host.host_mac = "aa:bb:cc:dd:ee:ff"
+        with Session(engine) as session:
+            session.add(host)
+            session.commit()
+            # Read the value while the session is open: the instance is
+            # detached after the session closes.
+            self.assertIsNotNone(host.host_id)
+            self.assertIsInstance(host.host_id, str)
+            self.assertRegex(host.host_id,
+                             r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
 
 if __name__ == "__main__":
