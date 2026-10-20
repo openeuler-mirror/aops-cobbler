@@ -13,38 +13,46 @@
 Description: unit tests for util/request_util.py
 """
 import unittest
-from unittest.mock import patch, MagicMock
+
+from flask import Flask
 
 from cobbled.util.request_util import JsonObjectResource
+
+# A real Flask app provides the request context; patching the flask `request`
+# proxy directly makes the proxy resolve at patch setup time and raise
+# "Working outside of request context".
+APP = Flask("request-util-test")
+
+
+class DispatchSpy(JsonObjectResource):
+    """JsonObjectResource that records the dispatch reaching a method."""
+
+    def get(self):
+        return {"reached": True}
 
 
 class TestJsonObjectResource(unittest.TestCase):
     """Tests for JsonObjectResource class."""
 
-    @patch("cobbled.util.request_util.request")
-    def test_dispatch_request_with_dict(self, mock_request):
-        """Test dispatch_request accepts dict JSON body."""
-        mock_request.get_json.return_value = {"key": "value"}
-        resource = JsonObjectResource()
-        mock_dispatch = MagicMock(return_value="ok")
-        resource.dispatch_request = mock_dispatch
-        result = resource.dispatch_request()
-        mock_dispatch.assert_called_once()
+    def test_dispatch_request_with_dict(self):
+        """Test dispatch_request passes a dict JSON body to the method."""
+        with APP.test_request_context(json={"key": "value"}):
+            resource = DispatchSpy()
+            result = resource.dispatch_request()
+        self.assertEqual(result, {"reached": True})
 
-    @patch("cobbled.util.request_util.request")
-    def test_dispatch_request_with_list(self, mock_request):
+    def test_dispatch_request_with_list(self):
         """Test dispatch_request rejects list JSON body."""
-        mock_request.get_json.return_value = [1, 2, 3]
-        resource = JsonObjectResource()
-        result = resource.dispatch_request()
+        with APP.test_request_context(json=[1, 2, 3]):
+            resource = JsonObjectResource()
+            result = resource.dispatch_request()
         self.assertEqual(result.status_code, 400)
 
-    @patch("cobbled.util.request_util.request")
-    def test_dispatch_request_with_none(self, mock_request):
-        """Test dispatch_request rejects None body."""
-        mock_request.get_json.return_value = None
-        resource = JsonObjectResource()
-        result = resource.dispatch_request()
+    def test_dispatch_request_with_none(self):
+        """Test dispatch_request rejects a null JSON body."""
+        with APP.test_request_context(data="null", content_type="application/json"):
+            resource = JsonObjectResource()
+            result = resource.dispatch_request()
         self.assertEqual(result.status_code, 400)
 
 
