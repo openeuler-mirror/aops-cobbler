@@ -1,11 +1,11 @@
 {
   "breeds": {
     "redhat": {
-      "isseos-v22": {
+      "openeuler-v22": {
         "signatures": [
           "Packages"
         ],
-        "version_file": "ISSEOS-release-(.*).rpm",
+        "version_file": "openEuler-release-(.*).rpm",
         "version_file_regex": null,
         "kernel_arch": "kernel-(.*).rpm",
         "kernel_arch_regex": null,

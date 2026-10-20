@@ -24,7 +24,7 @@ if __name__ == '__main__':
 
     time_str = time.time()
 
-    server = 'http://192.168.235.106/cobbler_api'
+    server = 'http://192.168.1.100/cobbler_api'
 
     user = 'cobbler'
 
@@ -42,10 +42,10 @@ if __name__ == '__main__':
         print(remote_server.get_distros())
 
         # 返回distro指定名称的详细信息
-        # print(remote_server.get_distro('ISSEOS-V22-x86_64'))
+        # print(remote_server.get_distro('openEuler-V22-x86_64'))
 
         # 返回profile指定名称的详细信息
-        # print(remote_server.get_profile('ISSEOS-V22-x86_64'))
+        # print(remote_server.get_profile('openEuler-V22-x86_64'))
 
         # cobbler服务器状态监测
         # print(remote_server.ping())
