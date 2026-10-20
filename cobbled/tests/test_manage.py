@@ -13,8 +13,12 @@
 Description: unit tests for manage.py
 """
 import unittest
-from unittest.mock import patch, MagicMock
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
+from flask import Flask
+
+from cobbled.conf import configuration
 from cobbled.manage import init_application, _register_blue_point
 
 
@@ -33,14 +37,14 @@ class TestRegisterBluePoint(unittest.TestCase):
 class TestInitApplication(unittest.TestCase):
     """Tests for init_application function."""
 
-    @patch("cobbled.manage.configuration")
-    def test_init_application(self, mock_config):
-        """Test init_application returns Flask app."""
-        mock_settings = MagicMock()
-        mock_settings.__dict__ = {"test_key": "test_value"}
-        with patch("cobbled.manage.__import__", return_value=MagicMock()):
-            app = init_application("cobbled", mock_settings)
-            self.assertIsNotNone(app)
+    def test_init_application(self):
+        """Test init_application returns Flask app and syncs settings."""
+        settings = SimpleNamespace(test_key="test_value")
+        app = init_application("cobbled", settings)
+        self.assertIsInstance(app, Flask)
+        self.assertEqual(app.name, "cobbled")
+        self.assertEqual(configuration.test_key, "test_value")
+        delattr(configuration, "test_key")
 
 
 if __name__ == "__main__":
