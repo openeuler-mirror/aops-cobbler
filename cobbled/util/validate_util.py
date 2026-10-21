@@ -17,12 +17,11 @@ Description: Validate Util
 """
 
 
+import ipaddress
 import os
 import re
 import subprocess
 import uuid
-
-import validators
 
 from cobbled.conf import configuration
 from cobbled.conf.constant import ISOCons, KsCons, HostCons, ScriptCons
@@ -47,6 +46,33 @@ def run_ipmitool(bmc_ip, bmc_user_name, bmc_passwd, *command):
     except OSError:
         return 1
     return result.returncode
+
+
+_HOSTNAME_LABEL = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
+_MAC_ADDRESS = re.compile(r"^(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$")
+
+
+def _is_valid_hostname(value):
+    """Validate a hostname using the same rules as the raw_host column."""
+    if not isinstance(value, str) or not value or len(value) > 63:
+        return False
+    return all(_HOSTNAME_LABEL.fullmatch(label) for label in value.split("."))
+
+
+def _is_valid_ipv4(value):
+    """Validate a plain dotted-quad IPv4 address without CIDR notation."""
+    if not isinstance(value, str):
+        return False
+    try:
+        ipaddress.IPv4Address(value)
+    except ValueError:
+        return False
+    return True
+
+
+def _is_valid_mac(value):
+    """Validate a colon- or hyphen-separated 48-bit MAC address."""
+    return isinstance(value, str) and _MAC_ADDRESS.fullmatch(value) is not None
 
 
 class ISOChecker:
@@ -145,13 +171,13 @@ class HostChecker:
         # 1.主机名长度不超过63个字符；
         # 2.主机名中只能包含英文字母（A - Z）、数字（0 - 9）和连字符（-），不能包含其他字符；
         # 3.主机名的开头和结尾不得出现连字符（-）；
-        if not validators.hostname(host_name):
+        if not _is_valid_hostname(host_name):
             return ResUtil.failed(HostCons.CHECK_HOST_NAME_TIPS)
 
     @staticmethod
     def check_bmc_ip(bmc_ip):
         # bmc_ip不能为空，且必须满足相应规则
-        if not validators.ip_address.ipv4(bmc_ip):
+        if not _is_valid_ipv4(bmc_ip):
             return ResUtil.failed(HostCons.CHECK_BMC_IP_TIPS)
 
     @staticmethod
@@ -199,7 +225,7 @@ class HostChecker:
     @staticmethod
     def check_host_mac(host_mac):
         # Mac地址不能为空，且必须满足相应规则
-        if not validators.mac_address(host_mac):
+        if not _is_valid_mac(host_mac):
             return ResUtil.failed(HostCons.CHECK_HOST_MAC_TIPS)
 
 
