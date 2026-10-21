@@ -43,6 +43,18 @@ class TestGetDefaultGateway(unittest.TestCase):
         self.assertEqual(get_default_gateway("10.10.192.213", "255.255.255.0"),
                          "10.10.192.254")
 
+    def test_uses_last_usable_host_of_subnet(self):
+        cases = {
+            "25": "10.10.192.254",
+            "23": "10.10.193.254",
+            "16": "10.10.255.254",
+            "30": "10.10.192.214",
+        }
+        for mask, expected in cases.items():
+            with self.subTest(mask=mask):
+                self.assertEqual(get_default_gateway("10.10.192.213", mask),
+                                 expected)
+
     def test_after_install_script_uses_configured_subnet_mask(self):
         script_path = Path(__file__).parents[3] / "script" / "after_os_installed.sh"
         script = script_path.read_text(encoding="utf-8")
