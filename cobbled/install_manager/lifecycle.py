@@ -5,6 +5,10 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 
 from cobbled.database.table import InstallationCleanup, RawHost
+from cobbled.install_manager.configuration import (
+    CobblerInstallationConfiguration,
+    InstallationConfigurationError,
+)
 from cobbled.log.log import LOGGER
 
 
@@ -127,27 +131,16 @@ class InstallationLifecycle:
             if task is None or task.state != "pending" or task.next_attempt_at > self.clock():
                 self.session.rollback()
                 return
-            stage = "连接 Cobbler"
             try:
-                remote, token = connect_cobbler()
-                stage = "查询 Cobbler 配置"
-                system = remote.get_system(task.system_name)
-                # 删除已完成、DHCP 同步尚未完成的任务，重试时仍需同步。
-                if system and system != "~":
-                    stage = "删除 Cobbler 配置"
-                    if not remote.remove_system(task.system_name, token):
-                        raise RuntimeError("Cobbler 删除配置失败")
-                stage = "同步 DHCP"
-                if not remote.sync_dhcp(token):
-                    raise RuntimeError("Cobbler 同步 DHCP 失败")
-            except Exception as error:
+                CobblerInstallationConfiguration.clean_system(connect_cobbler, task.system_name)
+            except InstallationConfigurationError as error:
                 task.failures += 1
                 delay = min(300 * (2 ** min(task.failures - 1, 3)), 1800)
                 task.next_attempt_at = self.clock() + timedelta(seconds=delay)
                 # 外部异常可能包含凭据；对外只保留固定摘要及异常类型。
-                task.last_error = f"{stage}失败（{type(error).__name__}），等待重试"
+                task.last_error = error.cleanup_summary
                 LOGGER.warning("Installation cleanup failed for host %s, round %s (%s)",
-                               host_id, task.round_id, type(error).__name__)
+                               host_id, task.round_id, error.error_type)
             else:
                 task.state = "done"
                 task.next_attempt_at = None
