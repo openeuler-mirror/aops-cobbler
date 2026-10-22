@@ -20,8 +20,12 @@ from dataclasses import dataclass
 from typing import Optional, Union
 
 from cobbled.conf.constant import HostCons, InstallCons, KsCons, ScriptCons
+from cobbled.install_manager.configuration import CobblerInstallationConfiguration
+from cobbled.install_manager.lifecycle import (
+    InstallationConflict,
+    InstallationLifecycle,
+)
 from cobbled.log.log import LOGGER
-from cobbled.install_manager.lifecycle import InstallationConflict, InstallationLifecycle
 from cobbled.util.file_util import FileUtil
 
 
@@ -99,14 +103,12 @@ class InstallationWorkflow:
 
             # 6，判断该镜像文件是否已经上传
             distro_name = iso_name + "-" + arch
-            remote_server, token = self.connect_cobbler()
-            target = remote_server.get_distro(distro_name)
-            if not target or target == '~':
+            installation_config = CobblerInstallationConfiguration.for_image(
+                self.connect_cobbler, distro_name)
+            if installation_config is None:
                 LOGGER.error("The iso file not exists in remote cobbler server.")
                 return InstallationResult.failed(InstallCons.CHECK_ISO_EXITS_TIPS)
 
-            # 7，获取该镜像安装所使用的ks文件，读取本地ks文件内容
-            profile = remote_server.get_profile(distro_name)
             ks_content = FileUtil.read_file_content(ks_full_path)
 
             # 8，在ks文件中添加系统安装日志转发配置
@@ -168,50 +170,15 @@ class InstallationWorkflow:
                     reserved[hosts[0].host_id] = round_id
                     host["installation_round"] = round_id
                     if not configuration_ready:
-                        # 12，将ks内容更新到Cobbler服务端ks文件中
-                        write_result = remote_server.write_autoinstall_template(profile["autoinstall"], ks_content, token)
-                        if not write_result:
-                            LOGGER.error("Write autoinstall ks template to cobbler server error.")
-                            raise RuntimeError(InstallCons.WRITE_AUTOINSTALL_KS_TIPS)
-
-                        # 13，设置当前镜像PXE menu启用，其他镜像PXE menu不启用
-                        profiles = remote_server.get_profiles()
-                        for pro in profiles:
-                            enable_menu = '1' if pro["name"] == distro_name else '0'
-                            modify_result = remote_server.modify_profile("profile::" + pro["name"], 'enable_menu', enable_menu,
-                                                                         token)
-                            if not modify_result:
-                                LOGGER.error("Modify cobbler server profile to set enable pxe menu error.")
-                                raise RuntimeError(InstallCons.SET_ENABLE_PXE_TIPS)
-                            # 保存profile
-                            remote_server.save_profile("profile::" + pro["name"], token)
-
-                        # 14， Cobbler服务端同步操作
-                        if not remote_server.sync(token):
-                            LOGGER.error("Cobbler sync error.")
-                            raise RuntimeError(InstallCons.COBBLER_SYNC_TIPS)
+                        installation_config.prepare_shared(ks_content)
                         configuration_ready = True
                     host_name = hosts[0].host_name + "-" + str(hosts[0].host_id)
                     try:
                         with lifecycle.active(hosts[0].host_id, round_id):
-                            system_id = remote_server.new_system(token)
-                            system_settings = (
-                                ("name", system_name),
-                                ("hostname", host_name),
-                                ("profile", profile.get("name")),
-                                ("kernel_options", {"aops_installation_round": round_id}),
-                                ("modify_interface", {
-                                    "macaddress-net0": hosts[0].host_mac,
-                                    "ipaddress-net0": host_ip,
-                                    "dhcptag-net0": "default"
-                                }),
-                            )
-                            if not system_id or not all(
-                                    remote_server.modify_system(system_id, field, value, token)
-                                    for field, value in system_settings):
-                                raise RuntimeError(InstallCons.COBBLER_SYSTEM_TIPS)
-                            if not remote_server.save_system(system_id, token) or not remote_server.sync_dhcp(token):
-                                raise RuntimeError(InstallCons.COBBLER_SYSTEM_TIPS)
+                            installation_config.prepare_host(
+                                system_name=system_name, host_name=host_name,
+                                round_id=round_id, host_mac=hosts[0].host_mac,
+                                host_ip=host_ip)
                     except Exception:
                         host["reason"] = InstallCons.COBBLER_SYSTEM_TIPS
                         lifecycle.finish(hosts[0].host_id, round_id, succeeded=False)
