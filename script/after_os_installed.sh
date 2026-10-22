@@ -7,7 +7,13 @@
  echo 'nameserver 8.8.8.8' > /etc/resolv.conf
  yum install -y ipmitool
  bmc_ip=`ipmitool lan print | grep 'IP Address' | grep -v 'Source' | awk -F ': ' '{print $2}'`
- curl -d '{"bmc_ip":"'${bmc_ip}'"}' -H "Content-Type: application/json " http://${ip_addr}:${port}/cobbler/notify
+ installation_round=$(sed -n 's/.*aops_installation_round=\([^ ]*\).*/\1/p' /proc/cmdline)
+ # 缺少轮次时不得发送会被误认为当前安装的完成通知。
+ if ! [[ "$installation_round" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
+   echo "Missing or invalid installation round" >&2
+   exit 1
+ fi
+ curl --fail --retry 5 --retry-delay 10 --connect-timeout 10 --max-time 60 -d '{"bmc_ip":"'${bmc_ip}'","installation_round":"'${installation_round}'"}' -H "Content-Type: application/json " http://${ip_addr}:${port}/cobbler/notify
 
  service_ip=`hostname -I`
  network_name=`ip addr | grep ${service_ip} | awk -F ' ' '{print $NF}'`

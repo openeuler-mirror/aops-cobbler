@@ -21,6 +21,7 @@ from typing import Optional, Union
 
 from cobbled.conf.constant import HostCons, InstallCons, KsCons, ScriptCons
 from cobbled.log.log import LOGGER
+from cobbled.install_manager.lifecycle import InstallationConflict, InstallationLifecycle
 from cobbled.util.file_util import FileUtil
 
 
@@ -57,17 +58,20 @@ class InstallationWorkflow:
     本流程保留逐主机提交与部分成功语义，不承诺跨外部操作的回滚。
     """
 
-    def __init__(self, settings, *, connect_cobbler, host_store, power):
+    def __init__(self, settings, *, connect_cobbler, host_store, power,
+                 lifecycle_factory=None):
         self.settings = settings
         self.connect_cobbler = connect_cobbler
         self.host_store = host_store
         self.power = power
+        self.lifecycle_factory = lifecycle_factory or InstallationLifecycle
 
     def run(self, *, host_list, ks_name, iso_name, arch, script_name=None, install_rpm=None):
         LOGGER.info("start to auto install")
         code = 200
         msg = InstallCons.AUTO_INSTALL_SUCCESS_TIPS
         result_list = []
+        reserved = {}
 
         try:
             # 3，检查ks文件是否存在
@@ -122,32 +126,12 @@ class InstallationWorkflow:
                 script_content = FileUtil.read_file_content(script_full_path)
                 ks_content = ks_content + "\n%post\n" + script_content + "\n%end\n"
 
-            # 12，将ks内容更新到Cobbler服务端ks文件中
-            write_result = remote_server.write_autoinstall_template(profile["autoinstall"], ks_content, token)
-            if not write_result:
-                LOGGER.error("Write autoinstall ks template to cobbler server error.")
-                return InstallationResult.failed(InstallCons.WRITE_AUTOINSTALL_KS_TIPS)
-
-            # 13，设置当前镜像PXE menu启用，其他镜像PXE menu不启用
-            profiles = remote_server.get_profiles()
-            for pro in profiles:
-                enable_menu = '1' if pro["name"] == distro_name else '0'
-                modify_result = remote_server.modify_profile("profile::" + pro["name"], 'enable_menu', enable_menu,
-                                                             token)
-                if not modify_result:
-                    LOGGER.error("Modify cobbler server profile to set enable pxe menu error.")
-                    return InstallationResult.failed(InstallCons.SET_ENABLE_PXE_TIPS)
-                # 保存profile
-                remote_server.save_profile("profile::" + pro["name"], token)
-
-            # 14， Cobbler服务端同步操作
-            if not remote_server.sync(token):
-                LOGGER.error("Cobbler sync error.")
-                return InstallationResult.failed(InstallCons.COBBLER_SYNC_TIPS)
-
             with self.host_store() as host_proxy:
+                lifecycle = self.lifecycle_factory(host_proxy.session)
+                reserved = {}
                 host_ip_list = []  # 记录已经使用的IP地址
                 prepared_hosts = []
+                configuration_ready = False
                 for host in host_list:
                     host["result"] = "failed"
                     result_list.append(host)
@@ -175,34 +159,70 @@ class InstallationWorkflow:
                         host["reason"] = check_result
                         continue
 
-                    # 18，先准备所有主机的system和DHCP配置，暂不触发重启
-                    system_id = remote_server.new_system(token)
-                    host_name = hosts[0].host_name + "-" + str(hosts[0].host_id)
-                    system_settings = (
-                        ("name", host_name),
-                        ("hostname", host_name),
-                        ("profile", profile.get("name")),
-                        ("modify_interface", {
-                            "macaddress-net0": hosts[0].host_mac,
-                            "ipaddress-net0": host_ip,
-                            "dhcptag-net0": "default"
-                        }),
-                    )
-                    if not system_id or not all(
-                            remote_server.modify_system(system_id, field, value, token)
-                            for field, value in system_settings):
-                        LOGGER.error(InstallCons.COBBLER_SYSTEM_TIPS)
-                        host["reason"] = InstallCons.COBBLER_SYSTEM_TIPS
+                    # 先预留轮次；准备与收尾通过同一主机数据库锁互斥。
+                    try:
+                        round_id, system_name = lifecycle.begin(hosts[0].host_id)
+                    except InstallationConflict as error:
+                        host["reason"] = str(error)
                         continue
+                    reserved[hosts[0].host_id] = round_id
+                    host["installation_round"] = round_id
+                    if not configuration_ready:
+                        # 12，将ks内容更新到Cobbler服务端ks文件中
+                        write_result = remote_server.write_autoinstall_template(profile["autoinstall"], ks_content, token)
+                        if not write_result:
+                            LOGGER.error("Write autoinstall ks template to cobbler server error.")
+                            raise RuntimeError(InstallCons.WRITE_AUTOINSTALL_KS_TIPS)
 
-                    # 保存system、同步DHCP生效
-                    if not remote_server.save_system(system_id, token) or not remote_server.sync_dhcp(token):
-                        LOGGER.error(InstallCons.COBBLER_SYSTEM_TIPS)
+                        # 13，设置当前镜像PXE menu启用，其他镜像PXE menu不启用
+                        profiles = remote_server.get_profiles()
+                        for pro in profiles:
+                            enable_menu = '1' if pro["name"] == distro_name else '0'
+                            modify_result = remote_server.modify_profile("profile::" + pro["name"], 'enable_menu', enable_menu,
+                                                                         token)
+                            if not modify_result:
+                                LOGGER.error("Modify cobbler server profile to set enable pxe menu error.")
+                                raise RuntimeError(InstallCons.SET_ENABLE_PXE_TIPS)
+                            # 保存profile
+                            remote_server.save_profile("profile::" + pro["name"], token)
+
+                        # 14， Cobbler服务端同步操作
+                        if not remote_server.sync(token):
+                            LOGGER.error("Cobbler sync error.")
+                            raise RuntimeError(InstallCons.COBBLER_SYNC_TIPS)
+                        configuration_ready = True
+                    host_name = hosts[0].host_name + "-" + str(hosts[0].host_id)
+                    try:
+                        with lifecycle.active(hosts[0].host_id, round_id):
+                            system_id = remote_server.new_system(token)
+                            system_settings = (
+                                ("name", system_name),
+                                ("hostname", host_name),
+                                ("profile", profile.get("name")),
+                                ("kernel_options", {"aops_installation_round": round_id}),
+                                ("modify_interface", {
+                                    "macaddress-net0": hosts[0].host_mac,
+                                    "ipaddress-net0": host_ip,
+                                    "dhcptag-net0": "default"
+                                }),
+                            )
+                            if not system_id or not all(
+                                    remote_server.modify_system(system_id, field, value, token)
+                                    for field, value in system_settings):
+                                raise RuntimeError(InstallCons.COBBLER_SYSTEM_TIPS)
+                            if not remote_server.save_system(system_id, token) or not remote_server.sync_dhcp(token):
+                                raise RuntimeError(InstallCons.COBBLER_SYSTEM_TIPS)
+                    except Exception:
                         host["reason"] = InstallCons.COBBLER_SYSTEM_TIPS
+                        lifecycle.finish(hosts[0].host_id, round_id, succeeded=False)
+                        reserved.pop(hosts[0].host_id)
                         continue
 
                     host_ip_list.append(host_ip)
                     prepared_hosts.append((host, hosts[0].host_id, host_ip))
+
+                if not prepared_hosts:
+                    return InstallationResult(code, msg, result_list)
 
                 # 19，所有Cobbler写入结束后修正PXE参数，避免后续同步覆盖修正结果
                 try:
@@ -211,41 +231,57 @@ class InstallationWorkflow:
                     LOGGER.exception(InstallCons.MODIFY_PXE_LINUX_DEFAULT_TIPS)
                     for host, _, _ in prepared_hosts:
                         host["reason"] = InstallCons.MODIFY_PXE_LINUX_DEFAULT_TIPS
+                    for host_id, round_id in reserved.items():
+                        lifecycle.finish(host_id, round_id, succeeded=False)
+                    reserved.clear()
                     return InstallationResult.failed(InstallCons.MODIFY_PXE_LINUX_DEFAULT_TIPS, result_list)
 
                 for host, host_id, host_ip in prepared_hosts:
-                    # 20，启动前持久化分配的IP并更新主机状态为装机中
-                    update_result = host_proxy.update_host_info({
-                        "host_id": host_id,
-                        "host_ip": host_ip,
-                        "status": 3
-                    })
-                    if not update_result:
-                        LOGGER.error(f'The host update failed:{str(host_id)}')
+                    round_id = reserved[host_id]
+                    try:
+                        lifecycle.prepare_start(host_id, round_id, host_ip)
+                    except Exception:
                         host["reason"] = HostCons.UPDATE_HOST_FAILED_TIPS
+                        lifecycle.finish(host_id, round_id, succeeded=False)
+                        reserved.pop(host_id)
                         continue
 
-                    # 21，配置和状态均已准备好，再设置PXE启动并重启主机
+                    # 状态/IP 已提交后才允许重启；锁内复查，防止超时收尾抢先结束轮次。
                     try:
-                        start_failed = self.power.start(host)
+                        with lifecycle.active(host_id, round_id):
+                            start_failed = self.power.start(host)
                     except Exception:
                         LOGGER.exception("Failed to start installation for host %s", host_id)
                         start_failed = True
 
                     if start_failed:
-                        LOGGER.error(InstallCons.IPMI_COMMAND_EXECUTE_TIPS)
                         host["reason"] = InstallCons.IPMI_COMMAND_EXECUTE_TIPS
-                        if not host_proxy.update_host_info({"host_id": host_id, "status": 4}):
-                            LOGGER.error("Failed to persist installation failure for host %s", host_id)
+                        try:
+                            lifecycle.finish(host_id, round_id, succeeded=False)
+                        except Exception:
                             host["reason"] += "; " + HostCons.UPDATE_HOST_FAILED_TIPS
+                        reserved.pop(host_id)
                         continue
 
+                    reserved.pop(host_id)
                     host["result"] = "succeed"
                     host["reason"] = ""
         except Exception as e:
             LOGGER.error(f'fail to auto install:{str(e)}')
             code = 400
             msg = str(e)
+            for host in result_list:
+                if host.get("result") == "failed" and not host.get("reason"):
+                    host["reason"] = msg
+            # 连接中断/进程终止时未能入队的轮次仍保持装机中，由超时扫描恢复。
+            if reserved:
+                try:
+                    with self.host_store() as recovery_store:
+                        recovery = self.lifecycle_factory(recovery_store.session)
+                        for host_id, round_id in reserved.items():
+                            recovery.finish(host_id, round_id, succeeded=False)
+                except Exception:
+                    LOGGER.exception("Failed to enqueue installation cleanup; timeout scan will retry")
 
         LOGGER.info("end to auto install")
         return InstallationResult(code, msg, result_list)

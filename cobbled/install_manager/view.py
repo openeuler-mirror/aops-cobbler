@@ -20,6 +20,9 @@ Description: Restful APIs for auto install os
 import os.path
 import zipfile
 from datetime import datetime
+from uuid import UUID
+
+from cobbled.install_manager.lifecycle import InstallationConflict, InstallationLifecycle
 from io import BytesIO
 
 from flask import request, send_file
@@ -99,7 +102,7 @@ class AutoInstall(JsonObjectResource):
                 os_start_ip=os_start_ip,
                 os_end_ip=os_end_ip,
             ),
-            connect_cobbler=lambda: RemoteServer().get_remote_server(),
+            connect_cobbler=lambda: RemoteServer(timeout=30).get_remote_server(),
             host_store=HostProxy,
             power=IPMIPower(),
         )
@@ -125,46 +128,35 @@ class Notify(JsonObjectResource):
         if check_result:
             return check_result
 
-        # 根据bmc_ip更新主机相关信息
-        with HostProxy() as host_proxy:
-            query_result, hosts = host_proxy.query_host_by_bmc_ip(bmc_ip)
-            if not query_result:
-                return ResUtil.failed(HostCons.QUERY_HOST_FAILED_TIPS)
-            if not hosts:
-                return ResUtil.failed(HostCons.CHECK_HOST_EXITS_TIPS)
-
-            host_info = {
-                "host_id": hosts[0].host_id,
-                "host_name": hosts[0].host_name,
-                "bmc_ip": hosts[0].bmc_ip,
-                "bmc_user_name": hosts[0].bmc_user_name,
-                "bmc_passwd": hosts[0].bmc_passwd,
-                "host_ip": service_ip,
-                "status": 1,
-            }
-            system_name = hosts[0].host_name + "-" + str(hosts[0].host_id)
-
-            update_result = host_proxy.update_host_info(host_info)
-            if not update_result:
-                return ResUtil.failed(HostCons.UPDATE_HOST_FAILED_TIPS)
-
-        # 根据名称删除对应的cobbler system，清理DHCP白名单
-        remote_server, token = RemoteServer().get_remote_server()
-        remote_server.remove_system(system_name, token)
-        remote_server.sync_dhcp(token)
-
-        LOGGER.info("end to notify aops-cobbler to update host info.")
+        round_id = request.json.get("installation_round")
+        try:
+            if not isinstance(round_id, str) or str(UUID(round_id)) != round_id:
+                raise ValueError()
+        except ValueError:
+            return ResUtil.failed("installation_round 缺失或格式错误")
+        try:
+            with HostProxy() as host_proxy:
+                InstallationLifecycle(host_proxy.session).notify(bmc_ip, round_id, service_ip)
+        except InstallationConflict as error:
+            return ResUtil.failed(str(error))
+        except Exception:
+            LOGGER.exception("Failed to persist installation completion")
+            return ResUtil.success_or_failed(500, "安装结果保存失败，请重试")
         return ResUtil.success(InstallCons.AUTO_INSTALL_NOTIFY_TIPS)
 
 
 def host_scheduler():
     with HostProxy() as host_proxy:
-        return _check_installation_status(host_proxy)
+        try:
+            _check_installation_status(host_proxy)
+        finally:
+            InstallationLifecycle(host_proxy.session).clean_due(
+                lambda: RemoteServer(timeout=30).get_remote_server())
 
 
 def _check_installation_status(host_proxy):
     LOGGER.info("start to execute scheduled tasks to check if the os has failed to install.")
-    failed_hosts = []
+    lifecycle = InstallationLifecycle(host_proxy.session)
     after_update_time = None
     after_host_id = None
 
@@ -188,8 +180,10 @@ def _check_installation_status(host_proxy):
         after_update_time = hosts[-1].update_time
         after_host_id = hosts[-1].host_id
 
-        for host in hosts:
-            interval_seconds = (datetime.now() - host.update_time).total_seconds()
+        snapshots = [(host.host_id, host.installation_round, host.host_name,
+                      host.installation_started_at or host.update_time) for host in hosts]
+        for host_id, round_id, host_name, started_at in snapshots:
+            interval_seconds = (datetime.now() - started_at).total_seconds()
             if interval_seconds < 300:
                 continue
 
@@ -198,27 +192,22 @@ def _check_installation_status(host_proxy):
             # 如果安装时间已经超过了30分钟，状态依然是装机中，则按照安装失败来处理。
             os_install_log_path = os.path.join(
                 os_install_log_dir,
-                host.host_name + "-" + str(host.host_id) + ".log")
+                host_name + "-" + str(host_id) + ".log")
             if not os.path.exists(os_install_log_path) \
                     or (datetime.now() - datetime.fromtimestamp(
                         os.path.getmtime(os_install_log_path))).total_seconds() > 120 \
                     or interval_seconds > os_installed_time * 60:
-                host_info = {
-                    "host_id": host.host_id,
-                    "status": 4
-                }
-                if host_proxy.update_host_info(host_info):
-                    failed_hosts.append(host)
+                if not round_id:
+                    LOGGER.error("Legacy installation requires manual cleanup: %s", host_id)
+                    continue
+                try:
+                    lifecycle.finish(host_id, round_id, succeeded=False, expected_started_at=started_at)
+                except InstallationConflict:
+                    # 扫描后已开始新轮次；不能结束新安装。
+                    continue
 
         if len(hosts) < HOST_SCHEDULER_BATCH_SIZE:
             break
-
-    # 根据名称删除对应的cobbler system，清理DHCP白名单
-    if failed_hosts:
-        remote_server, token = RemoteServer().get_remote_server()
-        for host in failed_hosts:
-            remote_server.remove_system(host.host_name + "-" + str(host.host_id), token)
-        remote_server.sync_dhcp(token)
 
     LOGGER.info("end to execute scheduled tasks to check if the os has failed to install.")
 

@@ -23,7 +23,7 @@ from sqlalchemy import and_, asc, or_
 from sqlalchemy.exc import SQLAlchemyError
 
 from cobbled.database.proxy import MysqlProxy
-from cobbled.database.table import RawHost
+from cobbled.database.table import RawHost, InstallationCleanup
 from cobbled.log.log import LOGGER
 from cobbled.util.aes_util import AesUtil
 
@@ -100,9 +100,24 @@ class HostProxy(MysqlProxy):
         if not query_result:
             return query_result, result
 
+        try:
+            cleanup_by_host = {task.host_id: task for task in self.session.query(InstallationCleanup)
+                               .filter(InstallationCleanup.host_id.in_([host.host_id for host in hosts])).all()}
+        except SQLAlchemyError as error:
+            LOGGER.error(error)
+            self.session.rollback()
+            return False, result
         for host in hosts:
+            cleanup = cleanup_by_host.get(host.host_id)
             host_info = {
                 "host_id": host.host_id,
+                "installation_round": host.installation_round,
+                "cleanup": {
+                    "state": cleanup.state if cleanup else "none",
+                    "failures": cleanup.failures if cleanup else 0,
+                    "next_attempt_at": cleanup.next_attempt_at.isoformat() if cleanup and cleanup.next_attempt_at else None,
+                    "last_error": cleanup.last_error if cleanup else None,
+                },
                 "host_name": host.host_name,
                 "bmc_ip": host.bmc_ip,
                 "bmc_user_name": host.bmc_user_name,
@@ -231,7 +246,20 @@ class HostProxy(MysqlProxy):
         Returns:
             bool: delete succeed or fail
         """
-        return self.delete(RawHost, {RawHost.host_id.in_(host_list)})
+        try:
+            hosts = (self.session.query(RawHost).filter(RawHost.host_id.in_(host_list))
+                     .order_by(RawHost.host_id).with_for_update().all())
+            if any(self._installation_busy(host) for host in hosts):
+                self.session.rollback()
+                return False
+            self.session.query(InstallationCleanup).filter(
+                InstallationCleanup.host_id.in_(host_list)).delete(synchronize_session=False)
+            self.session.query(RawHost).filter(RawHost.host_id.in_(host_list)).delete(synchronize_session=False)
+            self.session.commit()
+            return True
+        except SQLAlchemyError:
+            self.session.rollback()
+            return False
 
     def update_host_info(self, update_info: dict) -> bool:
         """
@@ -248,4 +276,28 @@ class HostProxy(MysqlProxy):
         Returns:
             str: True or False
         """
-        return self.update(RawHost, {RawHost.host_id == update_info.get("host_id")}, update_info)
+        allowed = {"host_name", "bmc_ip", "bmc_user_name", "bmc_passwd", "host_ip", "status", "host_mac"}
+        try:
+            host = (self.session.query(RawHost).filter_by(host_id=update_info.get("host_id"))
+                    .populate_existing().with_for_update().one_or_none())
+            if host is None or self._installation_busy(host):
+                self.session.rollback()
+                return False
+            # 已管理的轮次只能由收尾模块修改安装状态。
+            if host.installation_round and "status" in update_info and update_info["status"] != host.status:
+                self.session.rollback()
+                return False
+            for key, value in update_info.items():
+                if key in allowed:
+                    setattr(host, key, value)
+            self.session.commit()
+            return True
+        except SQLAlchemyError:
+            self.session.rollback()
+            return False
+
+    def _installation_busy(self, host):
+        task = (self.session.query(InstallationCleanup).filter_by(host_id=host.host_id)
+                .populate_existing().with_for_update().one_or_none())
+        return bool((host.installation_round and host.status == 3) or
+                    (task is not None and task.state != "done"))
