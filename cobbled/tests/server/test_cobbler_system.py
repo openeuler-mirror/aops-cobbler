@@ -21,7 +21,7 @@ import xmlrpc.client
 
 if __name__ == '__main__':
 
-    server = 'http://192.168.235.106/cobbler_api'
+    server = 'http://192.168.1.100/cobbler_api'
     user = 'cobbler'
     passwd = 'cobbler'
 
@@ -31,25 +31,25 @@ if __name__ == '__main__':
 
         # 新建cobbler system
         system_id = remote_server.new_system(token)
-        remote_server.modify_system(system_id, "name", "ISSEOS-V22", token)
-        remote_server.modify_system(system_id, "hostname", "ISSEOS", token)
-        remote_server.modify_system(system_id, "profile", "ISSEOS-V22-x86_64", token)
+        remote_server.modify_system(system_id, "name", "openEuler-V22", token)
+        remote_server.modify_system(system_id, "hostname", "openEuler", token)
+        remote_server.modify_system(system_id, "profile", "openEuler-V22-x86_64", token)
 
         remote_server.modify_system(system_id, 'modify_interface', {
             "macaddress-ens33": "00:0C:29:e1:8a:5c",
-            "ipaddress-ens33": "192.168.235.155",
-            "ifgateway-ens33": "192.168.235.2",
+            "ipaddress-ens33": "192.168.1.101",
+            "ifgateway-ens33": "192.168.1.2",
             "subnet-ens33": "255.255.255.0",
-            "dnsname-ens33": "isseos01",
+            "dnsname-ens33": "openeuler01",
             "dhcptag-ens33":"default"
         }, token)
 
         remote_server.modify_system(system_id, 'modify_interface', {
             "macaddress-en04": "00:0C:29:e1:8a:5d",
-            "ipaddress-en04": "192.168.235.156",
-            "ifgateway-en04": "192.168.235.2",
+            "ipaddress-en04": "192.168.1.102",
+            "ifgateway-en04": "192.168.1.2",
             "subnet-en04": "255.255.255.0",
-            "dnsname-en04": "isseos02",
+            "dnsname-en04": "openeuler02",
             "dhcptag-en04": "default"
         }, token)
 
