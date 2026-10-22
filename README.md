@@ -119,7 +119,7 @@ rpmbuild -ba "$HOME/rpmbuild/SPECS/aops-cobbler.spec"
 sudo yum localinstall -y "$HOME/rpmbuild/RPMS/x86_64/aops-cobbler-v1.0.0-1.x86_64.rpm"
 ```
 
-当前 [spec](./aops-cobbler.spec) 尚未声明 `validators` 依赖，需要额外为运行服务的系统 Python 安装该模块；可使用发行版提供的软件包。启动前确认该 Python 能执行 `import validators`。完整装机还需准备“环境需求”中列出的系统工具和服务。
+完整装机还需准备“环境需求”中列出的系统工具和服务。
 
 ### 2. 初始化数据库与配置
 
