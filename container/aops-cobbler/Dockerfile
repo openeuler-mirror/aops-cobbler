@@ -2,7 +2,6 @@ FROM openeuler/openeuler:22.03-lts-sp1
 WORKDIR /app
 COPY *  /app/
 RUN yum install hostname httpd dhcp tftp cobbler xinetd cobbler-web pykickstart fence-agents python3-pip aops-cobbler -y --setopt=reposdir=/app
-RUN pip install validators -i https://pypi.tuna.tsinghua.edu.cn/simple/
 
 RUN cp /usr/share/syslinux/pxelinux.0 /var/lib/cobbler/loaders/; \
 cp /usr/share/syslinux/menu.c32 /var/lib/cobbler/loaders/; \
