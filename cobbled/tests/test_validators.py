@@ -13,51 +13,25 @@
 """
 Time:
 Author:
-Description: validators test.
+Description: tests for the standard-library host field validators.
 """
 
+import unittest
 
-import validators
+from cobbled.util.validate_util import (
+    _is_valid_hostname,
+    _is_valid_ipv4,
+    _is_valid_mac,
+)
+
+
+class TestHostnameValidator(unittest.TestCase):
+
+    def test_accepts_simple_and_dotted_names(self):
+        for value in ("host-01", "host-01.example.com", "a" * 63):
+            with self.subTest(value=value):
+                self.assertTrue(_is_valid_hostname(value))
+
 
 if __name__ == "__main__":
-    # 1，校验 URL 地址是否合法
-    url = "https://www.example.com"
-    if validators.url(url):
-        print("URL is valid")
-    else:
-        print("URL is invalid")
-
-    # 2，检查电子邮件地址是否合法
-    email = "example@example.com"
-    if validators.email(email):
-        print("Email is valid")
-    else:
-        print("Email is invalid")
-
-    # 3，检查IP地址是否合法
-    ip_address = "192.168.1.1"
-    if validators.ip_address.ipv4(ip_address):
-        print("IP address is valid")
-    else:
-        print("IP address is invalid")
-
-    # 4，检查mac地址是否合法
-    mac_address = "00:0C:29:e1:8a:5d"
-    if validators.mac_address(mac_address):
-        print("Mac address is valid")
-    else:
-        print("Mac address is invalid")
-
-    # 5，检查hostname是否合法
-    host_name = "openEuler2203-LTS-SP1"
-    if validators.hostname(host_name):
-        print("Host name is valid")
-    else:
-        print("Host name is invalid")
-
-    # 6，检查域名是否合法
-    domain = "www.baidu.com"
-    if validators.domain(domain):
-        print("domain is valid")
-    else:
-        print("domain is invalid")
+    unittest.main()
