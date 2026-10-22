@@ -9,9 +9,8 @@ APScheduler~=3.10.4
 SQLAlchemy~=2.0.22
 PyMySQL
 
-# Crypto / validation
+# Crypto
 cryptography~=41.0.4
-validators~=0.22.0
 
 # Async server / logging
 gevent~=23.9.1

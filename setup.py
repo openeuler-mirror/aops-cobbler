@@ -35,7 +35,6 @@ setup(
         'PyMySQL',
         'sqlalchemy',
         'concurrent-log-handler',
-        'validators'
     ],
     author='cmd-lsw-yyy-zyc',
     data_files=[
