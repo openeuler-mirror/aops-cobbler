@@ -55,6 +55,10 @@ class TestGetDefaultGateway(unittest.TestCase):
                 self.assertEqual(get_default_gateway("10.10.192.213", mask),
                                  expected)
 
+    def test_very_large_subnet_does_not_overflow(self):
+        # 先加后减会在 /1 网段上产生 2**32 的中间值并抛 AddressValueError
+        self.assertEqual(get_default_gateway("128.0.0.1", 1), "255.255.255.254")
+
     def test_after_install_script_uses_configured_subnet_mask(self):
         script_path = Path(__file__).parents[3] / "script" / "after_os_installed.sh"
         script = script_path.read_text(encoding="utf-8")
