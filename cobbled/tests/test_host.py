@@ -28,6 +28,7 @@ from cobbled.database.table import Base, RawHost
 HOST_ID = "host-001"
 HOST_NAME = "test-host"
 BMC_IP = "10.0.0.1"
+BMC_USER_NAME = "admin"
 HOST_IP = "192.168.1.10"
 BMC_PASSWD = "secret"
 
@@ -46,15 +47,19 @@ class TestHostProxyAddHost(unittest.TestCase):
             "host_id": HOST_ID,
             "host_name": HOST_NAME,
             "bmc_ip": BMC_IP,
+            "bmc_user_name": BMC_USER_NAME,
             "host_ip": HOST_IP,
             "bmc_passwd": BMC_PASSWD,
             "host_mac": "AA:BB:CC:DD:EE:FF",
         }
-        with patch.object(proxy, "insert", return_value=True):
+        with patch.object(proxy, "insert", return_value=True) as insert:
             result = proxy.add_host(params)
             self.assertTrue(result)
-            self.assertEqual(params["bmc_passwd"], "encrypted")
-            self.assertEqual(params["host_mac"], "aa:bb:cc:dd:ee:ff")
+            self.assertEqual(params["bmc_passwd"], BMC_PASSWD)
+            self.assertEqual(params["host_mac"], "AA:BB:CC:DD:EE:FF")
+            inserted = insert.call_args.args[1]
+            self.assertEqual(inserted["bmc_passwd"], "encrypted")
+            self.assertEqual(inserted["host_mac"], "aa:bb:cc:dd:ee:ff")
 
 
 class TestHostProxyQueryHosts(unittest.TestCase):
@@ -215,6 +220,18 @@ class TestHostProxyCRUD(unittest.TestCase):
             {"host_id": self.host_id_of(1), "host_name": "renamed-host"}))
         row = self.proxy.session.query(RawHost).one()
         self.assertEqual(row.host_name, "renamed-host")
+
+    def test_update_host_info_filters_non_writable_fields(self):
+        self.proxy.insert(RawHost, self.make_host_data(index=1))
+        self.assertTrue(self.proxy.update_host_info({
+            "host_id": self.host_id_of(1),
+            "host_name": "renamed-host",
+            "installation_round": "client-supplied-round",
+            "unexpected": "ignored",
+        }))
+        row = self.proxy.session.query(RawHost).one()
+        self.assertEqual(row.host_name, "renamed-host")
+        self.assertIsNone(row.installation_round)
 
     def test_query_hosts_by_status_batch(self):
         t1 = datetime(2026, 2, 1, 0, 0, 0)
