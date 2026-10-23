@@ -32,6 +32,12 @@ class TestHostnameValidator(unittest.TestCase):
             with self.subTest(value=value):
                 self.assertTrue(_is_valid_hostname(value))
 
+    def test_rejects_invalid_names(self):
+        for value in ("", "  ", "-host", "host-", "under_score",
+                      "with space", "host..example", "a" * 64):
+            with self.subTest(value=value):
+                self.assertFalse(_is_valid_hostname(value))
+
 
 if __name__ == "__main__":
     unittest.main()
