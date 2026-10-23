@@ -122,6 +122,59 @@ class TestAutoInstallScriptValidation(unittest.TestCase):
                 self.assertIn("\n%post\necho custom-script\n%end\n", content)
                 self.read_file.assert_any_call(str(script))
 
+    def test_appended_shell_scripts_escape_dollars_without_changing_user_kickstart(self):
+        (self.ks_dir / "test.ks").write_text("text\n# $cobbler_variable\n", encoding="utf-8")
+        custom_script = self.script_dir / "setup.sh"
+        custom_script.write_text('echo "${custom_value}"\necho \\$literal\n', encoding="utf-8")
+
+        def read_content(path):
+            if path == "/opt/aops/script/after_os_installed.sh":
+                return 'installation_round=$(sed -n "1p" /proc/cmdline)\necho "$installation_round"'
+            return Path(path).read_text(encoding="utf-8")
+
+        with patch.object(workflow.FileUtil, "read_file_content", side_effect=read_content):
+            response = self.post(script_name="setup")
+
+        self.assertEqual(response.status_code, 200)
+        content = self.remote.write_autoinstall_template.call_args.args[1]
+        self.assertIn("# $cobbler_variable", content)
+        self.assertIn(r'\$(sed -n "1p" /proc/cmdline)', content)
+        self.assertIn(r'\$installation_round', content)
+        self.assertIn(r'\${custom_value}', content)
+        self.assertIn(r'\\$literal', content)
+
+    def test_literal_root_password_hash_is_raw_but_cobbler_variable_is_not(self):
+        ks_path = self.ks_dir / "test.ks"
+        for rootpw, expected in (
+            ("rootpw --iscrypted $6$salt$hash", "#raw\nrootpw --iscrypted $6$salt$hash\n#end raw"),
+            ("rootpw --iscrypted $default_password_crypted",
+             "rootpw --iscrypted $default_password_crypted"),
+            ("rootpw --iscrypted $default_password_crypted # example $6$hash",
+             "rootpw --iscrypted $default_password_crypted # example $6$hash"),
+        ):
+            with self.subTest(rootpw=rootpw):
+                ks_path.write_text("text\n" + rootpw + "\n", encoding="utf-8")
+                response = self.post()
+                self.assertEqual(response.status_code, 200)
+                content = self.remote.write_autoinstall_template.call_args.args[1]
+                self.assertIn(expected, content)
+                if "$default_password_crypted" in rootpw:
+                    self.assertNotIn("#raw", content)
+
+    def test_password_hash_protection_respects_existing_template_and_script_sections(self):
+        source = ("#raw\nrootpw --iscrypted $6$already$raw\n#end raw\n"
+                  "rootpw --iscrypted \\$6\\$already\\$escaped\n"
+                  "rootpw --iscrypted $y$j9T$salt$hash\n"
+                  "%post\nrootpw --iscrypted $6$inside$shell\n%end\n"
+                  "%include /tmp/extra.ks\n"
+                  "rootpw --iscrypted $5$salt$hash\n")
+        result = workflow.protect_literal_root_password_hashes(source)
+        self.assertEqual(result.count("#raw"), 3)
+        self.assertIn("#raw\nrootpw --iscrypted $y$j9T$salt$hash\n#end raw", result)
+        self.assertIn("#raw\nrootpw --iscrypted $5$salt$hash\n#end raw", result)
+        self.assertIn("%post\nrootpw --iscrypted $6$inside$shell\n%end", result)
+        self.assertIn("rootpw --iscrypted \\$6\\$already\\$escaped", result)
+
     def test_script_is_optional(self):
         for fields in ({}, {"script_name": None}, {"script_name": ""}):
             with self.subTest(fields=fields):

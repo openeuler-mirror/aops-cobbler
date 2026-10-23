@@ -18,6 +18,7 @@ aops-cobbler 是智能运维平台 A-Ops 的操作系统自动安装服务，通
 - 配置好 Cobbler、DHCP、TFTP 和 HTTP 服务，目标主机能够通过 PXE 启动并访问安装资源及本服务的回调地址。
 - 本服务能够访问目标主机的 BMC，安装 `ipmitool`，并配置有效的 BMC 账号。
 - 安装后脚本需位于 `/opt/aops/script/after_os_installed.sh`。RPM 会安装该文件；从源码运行完整装机流程时，需将仓库中的 `script/after_os_installed.sh` 放到该路径。
+- 应用会在拼接时自动转义内置安装后脚本和通过 `script_name` 上传的 shell 脚本中的 `$`；上传的脚本应保持普通 shell 写法。用户提交的 Kickstart 模板仍由 Cobbler/Cheetah 渲染：`rootpw --iscrypted` 中直接填写的密码散列会自动用 `#raw` 保护，`$default_password_crypted` 等 Cobbler 变量照常替换；模板中其他要保留给 shell 的 `$` 仍需写成 `\$`。过去为 Cheetah 手工转义过的独立 shell 脚本，升级后应恢复为普通 shell 写法。
 - 服务进程具备 ISO loop 挂载权限，能够执行 `mount`、`umount`，并读写配置指定的上传、脚本、日志和 HTTP 资源目录。
 - ISO 在本服务所在环境的 `/mnt/` 下挂载，随后该路径会传给 Cobbler 导入。部署在不同主机或容器时，必须保证 Cobbler 能在相同路径读取这些文件；仅配置远程 API 地址不足以完成导入。Kickstart、脚本及 PXE 相关目录也需按实际部署保持可访问。
 
