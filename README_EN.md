@@ -121,7 +121,7 @@ Replace the path and architecture with the actual build output:
 sudo yum localinstall -y "$HOME/rpmbuild/RPMS/x86_64/aops-cobbler-v1.0.0-1.x86_64.rpm"
 ```
 
-`validators` is replaced by standard library heplers, so no separate package is needed. The complete installation workflow also requires the tools and services listed under Requirements.
+The complete installation workflow also requires the tools and services listed under Requirements.
 
 ### 2. Initialize the Database and Configure the Service
 
