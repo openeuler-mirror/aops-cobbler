@@ -39,5 +39,11 @@ class TestHostnameValidator(unittest.TestCase):
                 self.assertFalse(_is_valid_hostname(value))
 
 
+class TestIPv4Validator(unittest.TestCase):
+
+    def test_accepts_plain_address(self):
+        self.assertTrue(_is_valid_ipv4("192.0.2.10"))
+
+
 if __name__ == "__main__":
     unittest.main()
