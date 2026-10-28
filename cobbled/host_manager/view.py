@@ -23,7 +23,7 @@ from flask_restful import Resource
 from flask import request, send_file
 
 from cobbled.conf.constant import HostCons
-from cobbled.database.host import HostProxy
+from cobbled.database.host import HOST_INSERT_FIELDS, HostProxy, filter_host_fields
 from cobbled.database.table import RawHost
 from cobbled.log.log import LOGGER
 from cobbled.util.aes_util import AesUtil
@@ -131,7 +131,7 @@ class BatchAddHost(JsonObjectResource):
                 bmc_passwd = host["bmc_passwd"]
                 host["bmc_passwd"] = AesUtil.encrypt(bmc_passwd)
                 host["host_mac"] = host_mac
-                data_list.append(RawHost(**host))
+                data_list.append(RawHost(**filter_host_fields(host, HOST_INSERT_FIELDS, context="add_host_batch")))
 
                 host["result"] = "succeed"
                 host["reason"] = ""
