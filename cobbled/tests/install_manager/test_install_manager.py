@@ -59,6 +59,12 @@ class TestGetDefaultGateway(unittest.TestCase):
         # 先加后减会在 /1 网段上产生 2**32 的中间值并抛 AddressValueError
         self.assertEqual(get_default_gateway("128.0.0.1", 1), "255.255.255.254")
 
+    def test_tiny_subnets_fall_back_to_network_address(self):
+        self.assertEqual(get_default_gateway("10.10.192.213", 31),
+                         "10.10.192.212")
+        self.assertEqual(get_default_gateway("10.10.192.213", 32),
+                         "10.10.192.213")
+
     def test_after_install_script_uses_configured_subnet_mask(self):
         script_path = Path(__file__).parents[3] / "script" / "after_os_installed.sh"
         script = script_path.read_text(encoding="utf-8")
