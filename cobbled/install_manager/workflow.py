@@ -109,7 +109,8 @@ class InstallationWorkflow:
                 LOGGER.error("The iso file not exists in remote cobbler server.")
                 return InstallationResult.failed(InstallCons.CHECK_ISO_EXITS_TIPS)
 
-            ks_content = FileUtil.read_file_content(ks_full_path)
+            ks_content = protect_literal_root_password_hashes(
+                FileUtil.read_file_content(ks_full_path))
 
             # 8，在ks文件中添加系统安装日志转发配置
             client_ip = self.settings.client_ip
@@ -121,12 +122,12 @@ class InstallationWorkflow:
             after_os_installed = FileUtil.read_file_content(self.settings.after_install_script)
             after_os_installed = render_after_os_installed_script(
                 after_os_installed, client_ip, port, self.settings.subnet_mask, install_rpm)
-            ks_content = ks_content + "\n%post\n" + after_os_installed + "\n%end\n"
+            ks_content = ks_content + "\n%post\n" + escape_shell_for_cheetah(after_os_installed) + "\n%end\n"
 
             # 11，将自定义脚本内容添加到ks文件中
             if script_name:
                 script_content = FileUtil.read_file_content(script_full_path)
-                ks_content = ks_content + "\n%post\n" + script_content + "\n%end\n"
+                ks_content = ks_content + "\n%post\n" + escape_shell_for_cheetah(script_content) + "\n%end\n"
 
             with self.host_store() as host_proxy:
                 lifecycle = self.lifecycle_factory(host_proxy.session)
@@ -256,6 +257,49 @@ class InstallationWorkflow:
 
 _LEGACY_PXE_VALUE_ARGUMENT = re.compile(r"(?<!\S)(ks|repo)=")
 _LEGACY_PXE_FLAG_ARGUMENT = re.compile(r"(?<!\S)kssendmac(?=\s|$)")
+_ROOTPW_COMMAND = re.compile(r"^\s*rootpw(?=\s|$)")
+_ISCRYPTED_OPTION = re.compile(r"(?<!\S)--iscrypted(?=\s|$)")
+_LITERAL_CRYPT_PREFIX = re.compile(r"(?<!\\)\$[A-Za-z0-9][A-Za-z0-9-]*\$")
+_KICKSTART_SECTION = re.compile(
+    r"^%(?:pre|pre-install|post|packages|addon|anaconda|onerror|traceback)(?=\s|$)")
+
+
+def protect_literal_root_password_hashes(kickstart):
+    """Keep literal crypt hashes in rootpw from becoming Cheetah variables.
+
+    A Cobbler variable such as $default_password_crypted has no second dollar
+    delimiter and remains available for rendering. Already escaped hashes and
+    existing raw blocks are left as their authors wrote them.
+    """
+    output = []
+    in_raw_block = False
+    in_kickstart_section = False
+    for line in kickstart.splitlines(keepends=True):
+        stripped = line.lstrip()
+        if stripped.strip() == "#raw":
+            in_raw_block = True
+        elif stripped.strip() == "#end raw":
+            in_raw_block = False
+        elif stripped.strip() == "%end":
+            in_kickstart_section = False
+        elif _KICKSTART_SECTION.match(stripped):
+            in_kickstart_section = True
+
+        if (not in_raw_block and not in_kickstart_section
+                and _ROOTPW_COMMAND.match(line)
+                and _ISCRYPTED_OPTION.search(line)
+                and _LITERAL_CRYPT_PREFIX.search(line.split("#", 1)[0])):
+            ending = "\r\n" if line.endswith("\r\n") else "\n"
+            output.extend(("#raw" + ending, line.rstrip("\r\n") + ending,
+                           "#end raw" + ending))
+        else:
+            output.append(line)
+    return "".join(output)
+
+
+def escape_shell_for_cheetah(script):
+    """Keep shell substitutions intact when Cobbler renders the Kickstart template."""
+    return script.replace("$", r"\$")
 
 
 def prefix_pxe_boot_arguments(content):
