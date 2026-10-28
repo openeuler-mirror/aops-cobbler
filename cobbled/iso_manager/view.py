@@ -55,11 +55,13 @@ def existing_iso_paths(iso_name, arch):
 
 def save_iso(iso_file, iso_path, txt_path):
     """Publish a complete ISO and its checksum from temporary files."""
-    iso_fd, temporary_iso = tempfile.mkstemp(prefix='.iso-', dir=upload_dir)
-    txt_fd, temporary_txt = tempfile.mkstemp(prefix='.sha-', dir=upload_dir)
-    os.close(iso_fd)
-    os.close(txt_fd)
+    temporary_iso = None
+    temporary_txt = None
     try:
+        iso_fd, temporary_iso = tempfile.mkstemp(prefix='.iso-', dir=upload_dir)
+        os.close(iso_fd)
+        txt_fd, temporary_txt = tempfile.mkstemp(prefix='.sha-', dir=upload_dir)
+        os.close(txt_fd)
         iso_file.save(temporary_iso)
         checksum = FileUtil.calculate_file_sha256(temporary_iso)
         FileUtil.write_file_content(temporary_txt, checksum)
@@ -69,7 +71,7 @@ def save_iso(iso_file, iso_path, txt_path):
         os.replace(temporary_txt, txt_path)
     finally:
         for path in (temporary_iso, temporary_txt):
-            if os.path.exists(path):
+            if path and os.path.exists(path):
                 os.remove(path)
 
 
@@ -110,7 +112,8 @@ class UploadISO(Resource):
             iso_full_path, txt_path = iso_paths(iso_name, arch)
             mount_dir = '/mnt/' + distro_name
             if os.path.ismount(mount_dir):
-                return ResUtil.failed('The iso mount point is occupied; delete it before retrying.')
+                subprocess.run(["umount", mount_dir], check=True,
+                               capture_output=True, text=True)
             save_iso(iso_file, iso_full_path, txt_path)
 
             # 挂载该iso文件
@@ -210,19 +213,20 @@ class DeleteISO(JsonObjectResource):
             has_distro = bool(target and target != '~')
             iso_absolute_path, txt_absolute_path = iso_paths(iso_name, arch)
             iso_mount_path = os.path.join('/mnt/', distro_name)
+            legacy_path = os.path.join(upload_dir, iso_name + '.iso')
             if not has_distro and not os.path.ismount(iso_mount_path) and \
-                    not os.path.exists(iso_absolute_path):
+                    not os.path.exists(iso_absolute_path) and not os.path.exists(legacy_path):
                 LOGGER.error("The iso file not exists in remote cobbler server!")
                 return ResUtil.failed(InstallCons.CHECK_ISO_EXITS_TIPS)
 
             # Read before mutation so a lookup failure cannot turn a completed
             # deletion into a reported failure. Match the exact base name.
             other_distros = remote_server.get_distros()
-            other_arches = configuration.iso.get("ARCH").split(",")
             legacy_in_use = any(
-                distro.get('name') == iso_name + '-' + other_arch
-                for distro in other_distros for other_arch in other_arches
-                if other_arch != arch
+                distro.get('name') != distro_name and
+                distro.get('name') == iso_name + '-' + str(distro.get('arch')) and
+                not os.path.exists(iso_paths(iso_name, distro.get('arch'))[0])
+                for distro in other_distros
             )
 
             if os.path.ismount(iso_mount_path):
