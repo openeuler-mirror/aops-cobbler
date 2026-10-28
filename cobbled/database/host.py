@@ -28,6 +28,45 @@ from cobbled.log.log import LOGGER
 from cobbled.util.aes_util import AesUtil
 
 
+# Client-writable columns for a host. created_time and update_time are excluded
+# because the MySQL DDL supplies their defaults. installation_* columns are
+# managed by InstallationLifecycle instead of the host API. The list is kept
+# explicit so a new RawHost column does not become client-writable by accident.
+# host_id is optional because the model generates it.
+HOST_INSERT_FIELDS = frozenset({
+    "host_id",
+    "host_name",
+    "bmc_ip",
+    "bmc_user_name",
+    "bmc_passwd",
+    "host_ip",
+    "status",
+    "host_mac",
+})
+
+# host_id is the lookup key for updates, never a column to rewrite.
+HOST_UPDATE_FIELDS = HOST_INSERT_FIELDS - {"host_id"}
+
+# The API layer validates these before calling the proxy; checking again here
+# keeps direct callers from turning a missing field into a KeyError.
+HOST_REQUIRED_FIELDS = frozenset({
+    "host_name",
+    "bmc_ip",
+    "bmc_user_name",
+    "bmc_passwd",
+    "host_mac",
+})
+
+
+def filter_host_fields(data: dict, allowed_fields: frozenset, *,
+                       context: str = "host write", ignored_fields: frozenset = frozenset()) -> dict:
+    """Return only the write fields accepted for a host operation."""
+    dropped_fields = sorted(set(data) - allowed_fields - ignored_fields)
+    if dropped_fields:
+        LOGGER.debug("Ignoring non-writable fields for %s: %s", context, dropped_fields)
+    return {key: value for key, value in data.items() if key in allowed_fields}
+
+
 class HostProxy(MysqlProxy):
     """
     Host related table operation
@@ -43,10 +82,19 @@ class HostProxy(MysqlProxy):
         Returns:
             bool: True or False
         """
-        params["bmc_passwd"] = AesUtil.encrypt(params["bmc_passwd"])
+        host_data = filter_host_fields(params, HOST_INSERT_FIELDS, context="add_host")
+        invalid_fields = sorted(
+            field for field in HOST_REQUIRED_FIELDS
+            if not isinstance(host_data.get(field), str) or not host_data[field]
+        )
+        if invalid_fields:
+            LOGGER.error("Host data has missing or invalid required fields: %s", invalid_fields)
+            return False
+
+        host_data["bmc_passwd"] = AesUtil.encrypt(host_data["bmc_passwd"])
         # MAC转为小写，避免大小写差异导致重复校验失效
-        params["host_mac"] = params["host_mac"].lower()
-        return self.insert(RawHost, params)
+        host_data["host_mac"] = host_data["host_mac"].lower()
+        return self.insert(RawHost, host_data)
 
     def add_host_batch(self, host_list) -> bool:
         """
@@ -276,7 +324,9 @@ class HostProxy(MysqlProxy):
         Returns:
             str: True or False
         """
-        allowed = {"host_name", "bmc_ip", "bmc_user_name", "bmc_passwd", "host_ip", "status", "host_mac"}
+        update_data = filter_host_fields(
+            update_info, HOST_UPDATE_FIELDS,
+            context="update_host_info", ignored_fields={"host_id"})
         try:
             host = (self.session.query(RawHost).filter_by(host_id=update_info.get("host_id"))
                     .populate_existing().with_for_update().one_or_none())
@@ -287,9 +337,8 @@ class HostProxy(MysqlProxy):
             if host.installation_round and "status" in update_info and update_info["status"] != host.status:
                 self.session.rollback()
                 return False
-            for key, value in update_info.items():
-                if key in allowed:
-                    setattr(host, key, value)
+            for key, value in update_data.items():
+                setattr(host, key, value)
             self.session.commit()
             return True
         except SQLAlchemyError:
