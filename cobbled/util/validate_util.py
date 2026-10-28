@@ -24,7 +24,7 @@ import subprocess
 import uuid
 
 from cobbled.conf import configuration
-from cobbled.conf.constant import ISOCons, KsCons, HostCons, ScriptCons
+from cobbled.conf.constant import ISOCons, KsCons, HostCons, ScriptCons, InstallCons
 
 from cobbled.util.aes_util import AesUtil
 from cobbled.util.response_util import ResUtil
@@ -119,6 +119,15 @@ class KsChecker:
 
 
 class InstallChecker:
+    @staticmethod
+    def check_install_rpm(install_rpm):
+        if install_rpm is None or install_rpm == "":
+            return None
+        package_name = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]*")
+        if (not isinstance(install_rpm, str) or
+                any(not package_name.fullmatch(name) for name in install_rpm.split(","))):
+            return ResUtil.failed(InstallCons.CHECK_RPM_NAME_TIPS)
+
     @staticmethod
     def check_host_list(host_list):
         check_result = HostChecker.check_host_list(host_list, dict)

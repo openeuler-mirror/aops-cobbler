@@ -51,6 +51,9 @@ class TestAutoInstallResponse(unittest.TestCase):
             {"iso_name": 123}, {"ks_name": "../test"}, {"arch": "invalid"},
             {"host_list": [None]}, {"host_list": "host"},
             {"host_list": [{"bmc_ip": "invalid"}]}, {"script_name": "../test"},
+            {"install_rpm": ["vim"]}, {"install_rpm": "vim,,git"},
+            {"install_rpm": "vim'; echo injected >&2; #"},
+            {"install_rpm": "-y"},
         )
         for fields in invalid_fields:
             with self.subTest(fields=fields), patch.object(view, "InstallationWorkflow") as factory:
@@ -58,6 +61,15 @@ class TestAutoInstallResponse(unittest.TestCase):
                 self.assertEqual(response.status_code, 400)
                 self.assertEqual(response.json["code"], 400)
                 factory.assert_not_called()
+
+    def test_accepts_comma_separated_package_names(self):
+        with patch.object(view, "InstallationWorkflow") as factory:
+            factory.return_value.run.return_value = InstallationResult(200, "ok")
+            response = self.client.post(
+                "/install", json={**self.payload, "install_rpm": "vim,python3-libs,libstdc++"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(factory.return_value.run.call_args.kwargs["install_rpm"],
+                         "vim,python3-libs,libstdc++")
 
     def test_missing_kickstart_uses_real_workflow_without_external_connections(self):
         with tempfile.TemporaryDirectory() as directory, \

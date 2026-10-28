@@ -16,6 +16,8 @@ Author:
 Description: test install manager.
 """
 
+import subprocess
+import tempfile
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -27,7 +29,9 @@ from sqlalchemy.orm import sessionmaker
 from cobbled.database.host import HostProxy
 from cobbled.database.table import Base, RawHost
 from cobbled.install_manager import view
-from cobbled.install_manager.workflow import get_default_gateway, render_after_os_installed_script
+from cobbled.install_manager.workflow import (
+    InstallationSettings, InstallationWorkflow, get_default_gateway,
+    render_after_os_installed_script)
 
 
 class TestGetDefaultGateway(unittest.TestCase):
@@ -74,6 +78,27 @@ class TestGetDefaultGateway(unittest.TestCase):
 
         self.assertIn('echo "PREFIX=16"', rendered_script)
         self.assertNotIn("s_u_b_n_e_t_m_a_s_k", rendered_script)
+
+
+class TestRpmLookup(unittest.TestCase):
+
+    def test_yum_lookup_is_bounded_and_timeout_returns_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            Path(directory, "sample.ks").write_text("", encoding="utf-8")
+            settings = InstallationSettings(
+                ks_dir=directory, script_dir=directory, client_ip="10.0.0.1",
+                port=8888, subnet_mask=24, os_start_ip="10.0.0.2",
+                os_end_ip="10.0.0.3", rpm_search_timeout=45)
+            workflow = InstallationWorkflow(
+                settings, connect_cobbler=Mock(), host_store=Mock(), power=Mock())
+            with patch("cobbled.install_manager.workflow.subprocess.run",
+                       side_effect=subprocess.TimeoutExpired(["yum", "search", "vim"], 45)) as run:
+                result = workflow.run(
+                    host_list=[], ks_name="sample", iso_name="sample",
+                    arch="x86_64", install_rpm="vim")
+        self.assertEqual(result.code, 400)
+        run.assert_called_once()
+        self.assertEqual(run.call_args.kwargs["timeout"], 45)
 
 
 class TestHostScheduler(unittest.TestCase):

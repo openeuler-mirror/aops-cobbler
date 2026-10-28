@@ -92,6 +92,10 @@ class AutoInstall(JsonObjectResource):
             if check_result:
                 return check_result
 
+        check_result = InstallChecker.check_install_rpm(install_rpm)
+        if check_result:
+            return check_result
+
         workflow = InstallationWorkflow(
             InstallationSettings(
                 ks_dir=ks_dir,
@@ -101,6 +105,7 @@ class AutoInstall(JsonObjectResource):
                 subnet_mask=subnet_mask,
                 os_start_ip=os_start_ip,
                 os_end_ip=os_end_ip,
+                rpm_search_timeout=configuration.host.get("RPM_SEARCH_TIMEOUT", 30),
             ),
             connect_cobbler=lambda: RemoteServer(timeout=30).get_remote_server(),
             host_store=HostProxy,
