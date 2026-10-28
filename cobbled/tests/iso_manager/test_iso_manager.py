@@ -20,6 +20,7 @@ Description: test iso manager
 import hashlib
 import io
 import os
+import stat
 import subprocess
 import tempfile
 import unittest
@@ -112,6 +113,27 @@ class TestUploadISO(unittest.TestCase):
                     self.assertEqual(contents, f.read())
             self.assertEqual(2, run.call_count)
 
+    def test_import_failure_unmounts_for_retry(self):
+        with tempfile.TemporaryDirectory() as upload_dir, \
+                self.app.test_request_context('/cobbler/uploadISO', method='POST', data={
+                    'iso_name': 'demo', 'arch': 'x86_64',
+                    'file': (io.BytesIO(b'iso'), 'demo.iso')}), \
+                patch.object(view, 'upload_dir', upload_dir), \
+                patch.object(view, 'RemoteServer') as factory, \
+                patch.object(view.os.path, 'ismount', return_value=False), \
+                patch.object(view.os, 'makedirs'), \
+                patch.object(view.subprocess, 'run') as run:
+            remote = MagicMock()
+            factory.return_value.get_remote_server.return_value = (remote, 'token')
+            remote.get_distro.return_value = None
+            remote.background_import.side_effect = RuntimeError('import failed')
+            response = view.UploadISO().post()
+            self.assertEqual(500, response.status_code)
+            self.assertEqual(['mount', 'umount'],
+                             [call.args[0][0] for call in run.call_args_list])
+            path = os.path.join(upload_dir, 'demo-x86_64.iso')
+            self.assertEqual(0o644, stat.S_IMODE(os.stat(path).st_mode))
+
     def test_mount_failure_does_not_start_cobbler_import(self):
         mount_error = subprocess.CalledProcessError(32, ['mount'])
 
@@ -155,6 +177,69 @@ class TestDeleteISO(unittest.TestCase):
                 response = view.DeleteISO().post()
             self.assertEqual(500, response.status_code)
             self.assertTrue(os.path.exists(iso_path))
+            remote.remove_distro.assert_not_called()
+
+    def test_orphan_mount_can_be_deleted_without_distro(self):
+        with tempfile.TemporaryDirectory() as upload_dir:
+            iso_path = os.path.join(upload_dir, 'demo-x86_64.iso')
+            with open(iso_path, 'wb') as f:
+                f.write(b'iso')
+            remote = MagicMock()
+            remote.get_distro.return_value = None
+            remote.get_distros.return_value = []
+            factory = MagicMock()
+            factory.get_remote_server.return_value = (remote, 'token')
+            real_exists = os.path.exists
+            with self.app.test_request_context('/cobbler/deleteISO', method='POST',
+                                               json={'iso_name': 'demo', 'arch': 'x86_64'}), \
+                    patch.object(view, 'upload_dir', upload_dir), \
+                    patch.object(view, 'RemoteServer', return_value=factory), \
+                    patch.object(view.os.path, 'ismount', return_value=True), \
+                    patch.object(view.os.path, 'exists',
+                                 side_effect=lambda path: False if path.startswith('/mnt/') else real_exists(path)), \
+                    patch.object(view.subprocess, 'run') as run:
+                response = view.DeleteISO().post()
+            self.assertEqual(200, response.status_code)
+            self.assertFalse(os.path.exists(iso_path))
+            run.assert_called_once()
+            remote.remove_distro.assert_not_called()
+
+    def test_legacy_cleanup_ignores_similar_distro_name(self):
+        with tempfile.TemporaryDirectory() as upload_dir:
+            legacy_path = os.path.join(upload_dir, 'demo.iso')
+            with open(legacy_path, 'wb') as f:
+                f.write(b'legacy')
+            remote = MagicMock()
+            remote.get_distro.return_value = {'name': 'demo-x86_64'}
+            remote.get_distros.return_value = [
+                {'name': 'demo-x86_64'}, {'name': 'demo-extra-aarch64'}]
+            factory = MagicMock()
+            factory.get_remote_server.return_value = (remote, 'token')
+            real_exists = os.path.exists
+            with self.app.test_request_context('/cobbler/deleteISO', method='POST',
+                                               json={'iso_name': 'demo', 'arch': 'x86_64'}), \
+                    patch.object(view, 'upload_dir', upload_dir), \
+                    patch.object(view, 'RemoteServer', return_value=factory), \
+                    patch.object(view.os.path, 'ismount', return_value=False), \
+                    patch.object(view.os.path, 'exists',
+                                 side_effect=lambda path: False if path.startswith('/mnt/') else real_exists(path)):
+                response = view.DeleteISO().post()
+            self.assertEqual(200, response.status_code)
+            self.assertFalse(os.path.exists(legacy_path))
+
+    def test_distro_lookup_failure_does_not_start_deletion(self):
+        with tempfile.TemporaryDirectory() as upload_dir:
+            remote = MagicMock()
+            remote.get_distro.return_value = {'name': 'demo-x86_64'}
+            remote.get_distros.side_effect = ConnectionError('unavailable')
+            factory = MagicMock()
+            factory.get_remote_server.return_value = (remote, 'token')
+            with self.app.test_request_context('/cobbler/deleteISO', method='POST',
+                                               json={'iso_name': 'demo', 'arch': 'x86_64'}), \
+                    patch.object(view, 'upload_dir', upload_dir), \
+                    patch.object(view, 'RemoteServer', return_value=factory):
+                response = view.DeleteISO().post()
+            self.assertEqual(500, response.status_code)
             remote.remove_distro.assert_not_called()
 
 

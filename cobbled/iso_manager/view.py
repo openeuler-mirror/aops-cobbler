@@ -18,6 +18,7 @@ Description: Restful APIs for iso manager
 
 
 import os
+import stat
 import subprocess
 import tempfile
 
@@ -62,6 +63,8 @@ def save_iso(iso_file, iso_path, txt_path):
         iso_file.save(temporary_iso)
         checksum = FileUtil.calculate_file_sha256(temporary_iso)
         FileUtil.write_file_content(temporary_txt, checksum)
+        os.chmod(temporary_iso, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
+        os.chmod(temporary_txt, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
         os.replace(temporary_iso, iso_path)
         os.replace(temporary_txt, txt_path)
     finally:
@@ -107,7 +110,7 @@ class UploadISO(Resource):
             iso_full_path, txt_path = iso_paths(iso_name, arch)
             mount_dir = '/mnt/' + distro_name
             if os.path.ismount(mount_dir):
-                return ResUtil.failed(ISOCons.CHECK_ISO_EXITS_TIPS)
+                return ResUtil.failed('The iso mount point is occupied; delete it before retrying.')
             save_iso(iso_file, iso_full_path, txt_path)
 
             # 挂载该iso文件
@@ -130,7 +133,17 @@ class UploadISO(Resource):
                 "breed": "",
                 "arch": arch
             }
-            remote_server.background_import(options, token)
+            try:
+                remote_server.background_import(options, token)
+            except Exception:
+                # A failed import may not create a distro, so leave the mount
+                # available for a later retry whenever cleanup succeeds.
+                try:
+                    subprocess.run(["umount", mount_dir], check=True,
+                                   capture_output=True, text=True)
+                except (subprocess.CalledProcessError, OSError) as cleanup_error:
+                    LOGGER.error("fail to clean up iso mount %s: %s", mount_dir, cleanup_error)
+                raise
             LOGGER.info("end to upload iso file")
         except Exception as e:
             LOGGER.error(f'fail to upload iso file:{str(e)}')
@@ -194,20 +207,33 @@ class DeleteISO(JsonObjectResource):
             distro_name = iso_name + "-" + arch
             remote_server, token = RemoteServer().get_remote_server()
             target = remote_server.get_distro(distro_name)
-            if not target or target == '~':
+            has_distro = bool(target and target != '~')
+            iso_absolute_path, txt_absolute_path = iso_paths(iso_name, arch)
+            iso_mount_path = os.path.join('/mnt/', distro_name)
+            if not has_distro and not os.path.ismount(iso_mount_path) and \
+                    not os.path.exists(iso_absolute_path):
                 LOGGER.error("The iso file not exists in remote cobbler server!")
                 return ResUtil.failed(InstallCons.CHECK_ISO_EXITS_TIPS)
 
-            iso_mount_path = os.path.join('/mnt/', distro_name)
+            # Read before mutation so a lookup failure cannot turn a completed
+            # deletion into a reported failure. Match the exact base name.
+            other_distros = remote_server.get_distros()
+            other_arches = configuration.iso.get("ARCH").split(",")
+            legacy_in_use = any(
+                distro.get('name') == iso_name + '-' + other_arch
+                for distro in other_distros for other_arch in other_arches
+                if other_arch != arch
+            )
+
             if os.path.ismount(iso_mount_path):
                 subprocess.run(["umount", iso_mount_path], check=True,
                                capture_output=True, text=True)
 
-            remote_server.remove_profile(distro_name, token)
-            remote_server.remove_distro(distro_name, token)
-            remote_server.sync(token)
+            if has_distro:
+                remote_server.remove_profile(distro_name, token)
+                remote_server.remove_distro(distro_name, token)
+                remote_server.sync(token)
 
-            iso_absolute_path, txt_absolute_path = iso_paths(iso_name, arch)
             if os.path.exists(iso_mount_path):
                 os.rmdir(iso_mount_path)
 
@@ -218,9 +244,7 @@ class DeleteISO(JsonObjectResource):
                 os.remove(txt_absolute_path)
 
             # Legacy files are shared by all architectures of the same name.
-            other_distros = remote_server.get_distros()
-            if not any(distro.get('name', '').startswith(iso_name + '-') and
-                       distro.get('name') != distro_name for distro in other_distros):
+            if not legacy_in_use:
                 legacy_base = os.path.join(upload_dir, iso_name)
                 for path in (legacy_base + '.iso', legacy_base + '.txt'):
                     if os.path.exists(path):
