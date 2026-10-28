@@ -221,6 +221,17 @@ class TestHostProxyCRUD(unittest.TestCase):
         row = self.proxy.session.query(RawHost).one()
         self.assertEqual(row.host_name, "renamed-host")
 
+    def test_add_host_ignores_unknown_fields(self):
+        """Unknown and non-writable fields must not reach the host record."""
+        data = self.make_host_data(
+            index=1, unexpected="ignored", result="succeed",
+            installation_round="client-supplied-round")
+        self.assertTrue(self.proxy.add_host(data))
+        row = self.proxy.session.query(RawHost).one()
+        self.assertEqual(row.host_name, "host-1")
+        self.assertIsNone(row.installation_round)
+        self.assertEqual(data["unexpected"], "ignored")
+
     def test_update_host_info_filters_non_writable_fields(self):
         self.proxy.insert(RawHost, self.make_host_data(index=1))
         self.assertTrue(self.proxy.update_host_info({
