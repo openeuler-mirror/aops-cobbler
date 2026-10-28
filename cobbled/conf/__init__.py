@@ -83,6 +83,8 @@ class Config:
                     value = math.prod(int(factor.strip()) for factor in value.split("*"))
                 else:
                     value = int(value)
+                if section == "host" and key.upper() == "RPM_SEARCH_TIMEOUT" and not 1 <= value <= 30:
+                    raise ValueError("rpm_search_timeout must be between 1 and 30 seconds")
             elif value_type is bool:
                 value = conf.getboolean(section, key)
             temp_config[key.upper()] = value

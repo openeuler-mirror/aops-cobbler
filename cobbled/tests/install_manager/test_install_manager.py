@@ -100,6 +100,27 @@ class TestRpmLookup(unittest.TestCase):
         run.assert_called_once()
         self.assertEqual(run.call_args.kwargs["timeout"], 45)
 
+    def test_lookup_errors_are_logged_and_distinguished(self):
+        with tempfile.TemporaryDirectory() as directory:
+            Path(directory, "sample.ks").write_text("", encoding="utf-8")
+            settings = InstallationSettings(
+                ks_dir=directory, script_dir=directory, client_ip="10.0.0.1",
+                port=8888, subnet_mask=24, os_start_ip="10.0.0.2",
+                os_end_ip="10.0.0.3")
+            workflow = InstallationWorkflow(
+                settings, connect_cobbler=Mock(), host_store=Mock(), power=Mock())
+            for error, message in (
+                    (subprocess.TimeoutExpired(["yum", "search", "vim"], 30), "timed out"),
+                    (OSError("yum missing"), "Failed to run")):
+                with self.subTest(error=error), \
+                        patch("cobbled.install_manager.workflow.subprocess.run", side_effect=error), \
+                        patch("cobbled.install_manager.workflow.LOGGER") as logger:
+                    result = workflow.run(
+                        host_list=[], ks_name="sample", iso_name="sample",
+                        arch="x86_64", install_rpm="vim")
+                    self.assertIn(message, result.msg)
+                    logger.exception.assert_called_once()
+
 
 class TestHostScheduler(unittest.TestCase):
 

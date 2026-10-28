@@ -88,7 +88,7 @@ Review the following settings before deployment. See the [INI template](./conf/a
 | `[host] os_start_ip / os_end_ip / subnet_mask` | Example address range / `24` | Available installation IP range and subnet mask, matching the installation network. |
 | `[host] check_bmc_connection` | `1` | Enables BMC connectivity checks, requiring `ipmitool` and BMC network access. |
 | `[host] scheduler_interval_time / os_installed_time` | `5` / `30` | Installation status check interval and installation timeout in minutes. |
-| `[host] rpm_search_timeout` | `30` | Timeout in seconds for each `yum search` query. |
+| `[host] rpm_search_timeout` | `30` | Timeout in seconds for each `yum search` query (1–30); `install_rpm` accepts up to 10 packages and 256 characters. |
 | `[host] os_install_log_dir` | `/var/log/osinstall/` | Installation log directory; configure the installation log receiver accordingly. |
 | `[uwsgi]` | See template | Used for RPM/systemd startup; local `python -m cobbled.manage` does not use uWSGI. |
 

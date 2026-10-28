@@ -102,8 +102,12 @@ class InstallationWorkflow:
                         check_rpm_result = subprocess.run(
                             ['yum', 'search', rpm], capture_output=True, text=True,
                             timeout=self.settings.rpm_search_timeout)
-                    except (subprocess.TimeoutExpired, OSError):
-                        return InstallationResult.failed(InstallCons.CHECK_RPM_SEARCH_TIPS + rpm)
+                    except subprocess.TimeoutExpired:
+                        LOGGER.exception("RPM package search timed out for %s", rpm)
+                        return InstallationResult.failed(InstallCons.CHECK_RPM_TIMEOUT_TIPS + rpm)
+                    except OSError:
+                        LOGGER.exception("Failed to run RPM package search for %s", rpm)
+                        return InstallationResult.failed(InstallCons.CHECK_RPM_RUN_TIPS + rpm)
                     if check_rpm_result.returncode or 'No matches found' in check_rpm_result.stderr:
                         return InstallationResult.failed(InstallCons.CHECK_RPM_EXITS_TIPS + rpm)
 

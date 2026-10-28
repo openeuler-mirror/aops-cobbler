@@ -46,6 +46,11 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(config.iso["MAX_CONTENT_LENGTH"], 5 * 1024 ** 3)
         self.assertEqual(config.script["MAX_CONTENT_LENGTH"], 10240)
 
+    def test_rpm_search_timeout_is_bounded(self):
+        for value in (0, -1, 31):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                self.load_config(f"[host]\nrpm_search_timeout={value}\n")
+
     def test_other_values_remain_strings(self):
         config = self.load_config(
             "[mysql]\ndatabase_name=001234\n"

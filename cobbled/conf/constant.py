@@ -122,6 +122,8 @@ class InstallCons:
     CHECK_RPM_EXITS_TIPS = "The rpm not exists: "
     CHECK_RPM_NAME_TIPS = "Invalid install_rpm package names."
     CHECK_RPM_SEARCH_TIPS = "Failed to check rpm package: "
+    CHECK_RPM_TIMEOUT_TIPS = "RPM package search timed out: "
+    CHECK_RPM_RUN_TIPS = "Failed to run RPM package search: "
     CHECK_ISO_EXITS_TIPS = "The iso file not exists in remote cobbler server."
     WRITE_AUTOINSTALL_KS_TIPS = "Write autoinstall ks template to cobbler server error."
     SET_ENABLE_PXE_TIPS = "Modify cobbler server profile to set enable pxe menu error."

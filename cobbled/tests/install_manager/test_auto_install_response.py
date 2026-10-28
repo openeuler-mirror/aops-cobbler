@@ -54,6 +54,8 @@ class TestAutoInstallResponse(unittest.TestCase):
             {"install_rpm": ["vim"]}, {"install_rpm": "vim,,git"},
             {"install_rpm": "vim'; echo injected >&2; #"},
             {"install_rpm": "-y"},
+            {"install_rpm": ",".join(["vim"] * 11)},
+            {"install_rpm": "v" * 257},
         )
         for fields in invalid_fields:
             with self.subTest(fields=fields), patch.object(view, "InstallationWorkflow") as factory:
