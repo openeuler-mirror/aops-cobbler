@@ -6,7 +6,7 @@ UWSGI_LOG_DIR=/var/log/aops/uwsgi
 
 function check_uwsgi_path() {
   if [ ! -d "$1" ];then
-    mkdir -p $1
+    mkdir -p "$1"
   fi
 }
 
@@ -17,15 +17,43 @@ function check_file() {
 }
 
 function get_config() {
-  INIFILE=$1
-  SECTION=$2
-  ITEM=$3
-  awk -F '=' '/\['"$SECTION"'\]/{a=1}a==1&&$1~/'"$ITEM"'/{print $2; exit}' "$INIFILE"
+  local ini_file=$1 section=$2 item=$3
+  LC_ALL=C awk -v section="$section" -v item="$item" '
+    function trim(s) {
+      sub(/^[[:space:]]+/, "", s)
+      sub(/[[:space:]]+$/, "", s)
+      return s
+    }
+    {
+      sub(/\r$/, "")
+      line = trim($0)
+      bom = sprintf("%c%c%c", 239, 187, 191)
+      if (NR == 1 && index(line, bom) == 1)
+        line = substr(line, length(bom) + 1)
+      if (line == "" || line ~ /^[#;]/) next
+      if (line ~ /^\[/) {
+        header = line
+        sub(/[[:space:]]+[#;].*$/, "", header)
+        header = trim(header)
+        in_section = (header ~ /^\[[^]]+\]$/ &&
+                      trim(substr(header, 2, length(header) - 2)) == section)
+        next
+      }
+      if (!in_section) next
+      separator = index(line, "=")
+      if (!separator) next
+      key = trim(substr(line, 1, separator - 1))
+      if (key == item) {
+        print trim(substr(line, separator + 1))
+        exit
+      }
+    }
+  ' "$ini_file"
 }
 
 function create_config_file() {
-  check_uwsgi_path $OUT_PATH
-  check_uwsgi_path $UWSGI_LOG_DIR
+  check_uwsgi_path "$OUT_PATH"
+  check_uwsgi_path "$UWSGI_LOG_DIR"
 
   echo "[INFO] start to create uwsgi file"
   config_file=$SYS_PATH/aops-cobbler.ini
@@ -42,18 +70,17 @@ function create_config_file() {
   threads=$(get_config "${config_file}" "uwsgi" "threads")
   gevent=$(get_config "${config_file}" "uwsgi" "gevent")
 
-  check_file $daemonize
-  echo "[INFO] run ${service_name} under path: ${wsgi_file}"
-
-  if [[ -z "${wsgi_file_name}" ]] || [[ -z "${ip}" ]] || [[ -z "${port}" ]]; then
+  if [[ -z "${wsgi_file_name}" ]] || [[ -z "${ip}" ]] || [[ -z "${port}" ]] || [[ -z "${daemonize}" ]]; then
     echo "[ERROR] can not find  all config name in: ${config_file}, please check the file."
-    echo "[ERROR] the following config name is needed: ip, port and wsgi_file."
+    echo "[ERROR] the following config name is needed: ip, port, wsgi-file and daemonize."
     exit 1
   fi
   if [ -z "${wsgi_file}" ]; then
     echo "[ERROR] can not find the ${service_name} path under: /usr/lib/"
     exit 1
   fi
+  check_file "$daemonize"
+  echo "[INFO] run ${service_name} under path: ${wsgi_file}"
 
   echo "[uwsgi]
 http=${ip}:${port}
@@ -67,16 +94,16 @@ http-timeout=${http_timeout}
 harakiri=${harakiri}
 processes=${processes}
 daemonize=${daemonize}" >"${OUT_PATH}"/"${service_name}".ini
-  if [ ${gevent} ]
+  if [ -n "${gevent}" ]
   then
     echo "gevent=${gevent}
 gevent-monkey-patch=true" >>"${OUT_PATH}"/"${service_name}".ini
   else
     echo "threads=${threads}" >>"${OUT_PATH}"/"${service_name}".ini
   fi
-  chown root: ${OUT_PATH}/"${service_name}".ini
-  chmod 750 ${OUT_PATH}/"${service_name}".ini
-  rm -rf ${OUT_PATH}/"${service_name}".pid
+  chown root: "${OUT_PATH}/${service_name}.ini"
+  chmod 640 "${OUT_PATH}/${service_name}.ini"
+  rm -f "${OUT_PATH}/${service_name}.pid"
   echo "[INFO] create ${service_name} uwsgi file ok,path is ${OUT_PATH}/${service_name}.ini"
 }
 
