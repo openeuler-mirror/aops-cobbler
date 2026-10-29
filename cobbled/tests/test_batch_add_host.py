@@ -106,6 +106,21 @@ class TestBatchAddHost(unittest.TestCase):
                              for statement in statements), 1)
         session.close()
 
+    def test_ignores_unknown_host_fields(self):
+        host = self._host("new", "192.0.2.1", "00:00:00:00:00:01")
+        host["unexpected"] = "ignored"
+        proxy = MagicMock()
+        proxy.query_existing_identities.return_value = (True, [])
+        proxy.add_host_batch.return_value = True
+
+        response = self._post([host], proxy, encrypt=True)
+
+        self.assertEqual(response.status_code, 200)
+        inserted = proxy.add_host_batch.call_args.args[0]
+        self.assertEqual(len(inserted), 1)
+        self.assertEqual(inserted[0].host_name, "new")
+        self.assertFalse(hasattr(inserted[0], "unexpected"))
+
     def test_host_name_column_matches_hostname_length_limit(self):
         self.assertEqual(RawHost.__table__.c.host_name.type.length, 63)
 
