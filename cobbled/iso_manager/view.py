@@ -18,7 +18,9 @@ Description: Restful APIs for iso manager
 
 
 import os
+import stat
 import subprocess
+import tempfile
 
 from flask import request
 from flask_restful import Resource
@@ -38,6 +40,41 @@ if not os.path.exists(upload_dir):
     FileUtil.makedirs(upload_dir)
 
 
+def iso_paths(iso_name, arch):
+    base = os.path.join(upload_dir, iso_name + '-' + arch)
+    return base + '.iso', base + '.txt'
+
+
+def existing_iso_paths(iso_name, arch):
+    paths = iso_paths(iso_name, arch)
+    if os.path.exists(paths[0]):
+        return paths
+    legacy = os.path.join(upload_dir, iso_name)
+    return legacy + '.iso', legacy + '.txt'
+
+
+def save_iso(iso_file, iso_path, txt_path):
+    """Publish a complete ISO and its checksum from temporary files."""
+    temporary_iso = None
+    temporary_txt = None
+    try:
+        iso_fd, temporary_iso = tempfile.mkstemp(prefix='.iso-', dir=upload_dir)
+        os.close(iso_fd)
+        txt_fd, temporary_txt = tempfile.mkstemp(prefix='.sha-', dir=upload_dir)
+        os.close(txt_fd)
+        iso_file.save(temporary_iso)
+        checksum = FileUtil.calculate_file_sha256(temporary_iso)
+        FileUtil.write_file_content(temporary_txt, checksum)
+        os.chmod(temporary_iso, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
+        os.chmod(temporary_txt, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
+        os.replace(temporary_iso, iso_path)
+        os.replace(temporary_txt, txt_path)
+    finally:
+        for path in (temporary_iso, temporary_txt):
+            if path and os.path.exists(path):
+                os.remove(path)
+
+
 class UploadISO(Resource):
     """
     Interface for upload iso file.
@@ -50,7 +87,9 @@ class UploadISO(Resource):
         msg = ISOCons.UPLOAD_ISO_SUCCESS_TIPS
 
         # 获取请求参数
-        iso_file = request.files['file']
+        iso_file = request.files.get('file')
+        if iso_file is None or not iso_file.filename:
+            return ResUtil.failed('The iso file can not be empty.')
         iso_name = request.form.get('iso_name')
         arch = request.form.get('arch')
 
@@ -70,22 +109,16 @@ class UploadISO(Resource):
                 return ResUtil.failed(ISOCons.CHECK_ISO_EXITS_TIPS)
 
             # 写入该iso文件
-            iso_full_path = os.path.join(upload_dir, iso_name + ".iso")
-            if not os.path.exists(iso_full_path):
-                iso_file.save(iso_full_path)
-                # 计算iso文件的sha256值
-                sha256_value = FileUtil.calculate_file_sha256(iso_full_path)
-                # 将iso文件的sha256值写入同名文件中
-                FileUtil.write_file_content(iso_full_path.replace('.iso', '.txt'), sha256_value)
+            iso_full_path, txt_path = iso_paths(iso_name, arch)
+            mount_dir = '/mnt/' + distro_name
+            if os.path.ismount(mount_dir):
+                subprocess.run(["umount", mount_dir], check=True,
+                               capture_output=True, text=True)
+            save_iso(iso_file, iso_full_path, txt_path)
 
             # 挂载该iso文件
-            mount_dir = '/mnt/' + distro_name
             os.makedirs(mount_dir, mode=0o755, exist_ok=True)
             try:
-                if os.path.ismount(mount_dir):
-                    subprocess.run(
-                        ["umount", mount_dir], check=True, capture_output=True, text=True
-                    )
                 subprocess.run(
                     ["mount", "-o", "loop,ro", iso_full_path, mount_dir],
                     check=True,
@@ -103,7 +136,17 @@ class UploadISO(Resource):
                 "breed": "",
                 "arch": arch
             }
-            remote_server.background_import(options, token)
+            try:
+                remote_server.background_import(options, token)
+            except Exception:
+                # A failed import may not create a distro, so leave the mount
+                # available for a later retry whenever cleanup succeeds.
+                try:
+                    subprocess.run(["umount", mount_dir], check=True,
+                                   capture_output=True, text=True)
+                except (subprocess.CalledProcessError, OSError) as cleanup_error:
+                    LOGGER.error("fail to clean up iso mount %s: %s", mount_dir, cleanup_error)
+                raise
             LOGGER.info("end to upload iso file")
         except Exception as e:
             LOGGER.error(f'fail to upload iso file:{str(e)}')
@@ -133,10 +176,11 @@ class QueryISO(Resource):
                 idx = iso_name.rfind('-' + arch)
                 if idx != -1:
                     iso_name = iso_name[:idx]
+                iso_path, txt_path = existing_iso_paths(iso_name, arch)
                 rep_data = {"iso_name": iso_name + '.iso',
                             "arch": arch,
-                            "iso_size": FileUtil.get_file_size(os.path.join(upload_dir, iso_name + '.iso')),
-                            "iso_sha256_value": FileUtil.read_file_content(os.path.join(upload_dir, iso_name + '.txt'))}
+                            "iso_size": FileUtil.get_file_size(iso_path),
+                            "iso_sha256_value": FileUtil.read_file_content(txt_path)}
                 rep_arr.append(rep_data)
         except Exception as e:
             LOGGER.error(f'fail to query iso file:{str(e)}')
@@ -166,19 +210,34 @@ class DeleteISO(JsonObjectResource):
             distro_name = iso_name + "-" + arch
             remote_server, token = RemoteServer().get_remote_server()
             target = remote_server.get_distro(distro_name)
-            if not target or target == '~':
+            has_distro = bool(target and target != '~')
+            iso_absolute_path, txt_absolute_path = iso_paths(iso_name, arch)
+            iso_mount_path = os.path.join('/mnt/', distro_name)
+            legacy_path = os.path.join(upload_dir, iso_name + '.iso')
+            if not has_distro and not os.path.ismount(iso_mount_path) and \
+                    not os.path.exists(iso_absolute_path) and not os.path.exists(legacy_path):
                 LOGGER.error("The iso file not exists in remote cobbler server!")
                 return ResUtil.failed(InstallCons.CHECK_ISO_EXITS_TIPS)
 
-            remote_server.remove_profile(distro_name, token)
-            remote_server.remove_distro(distro_name, token)
-            remote_server.sync(token)
+            # Read before mutation so a lookup failure cannot turn a completed
+            # deletion into a reported failure. Match the exact base name.
+            other_distros = remote_server.get_distros()
+            legacy_in_use = any(
+                distro.get('name') != distro_name and
+                distro.get('name') == iso_name + '-' + str(distro.get('arch')) and
+                not os.path.exists(iso_paths(iso_name, distro.get('arch'))[0])
+                for distro in other_distros
+            )
 
-            # 取消挂载，删除本地镜像文件
-            os.system('umount ' + '/mnt/' + distro_name)
-            iso_absolute_path = os.path.join(upload_dir, iso_name + '.iso')
-            txt_absolute_path = iso_absolute_path.replace('.iso', '.txt')
-            iso_mount_path = os.path.join('/mnt/', distro_name)
+            if os.path.ismount(iso_mount_path):
+                subprocess.run(["umount", iso_mount_path], check=True,
+                               capture_output=True, text=True)
+
+            if has_distro:
+                remote_server.remove_profile(distro_name, token)
+                remote_server.remove_distro(distro_name, token)
+                remote_server.sync(token)
+
             if os.path.exists(iso_mount_path):
                 os.rmdir(iso_mount_path)
 
@@ -187,6 +246,13 @@ class DeleteISO(JsonObjectResource):
 
             if os.path.exists(txt_absolute_path):
                 os.remove(txt_absolute_path)
+
+            # Legacy files are shared by all architectures of the same name.
+            if not legacy_in_use:
+                legacy_base = os.path.join(upload_dir, iso_name)
+                for path in (legacy_base + '.iso', legacy_base + '.txt'):
+                    if os.path.exists(path):
+                        os.remove(path)
 
             LOGGER.info("end to delete iso file")
         except Exception as e:
