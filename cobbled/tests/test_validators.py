@@ -44,6 +44,12 @@ class TestIPv4Validator(unittest.TestCase):
     def test_accepts_plain_address(self):
         self.assertTrue(_is_valid_ipv4("192.0.2.10"))
 
+    def test_rejects_invalid_or_cidr_addresses(self):
+        for value in ("", "256.1.1.1", "192.0.2", "192.0.2.10.8",
+                      "192.0.2.10/24", 3232238090):
+            with self.subTest(value=value):
+                self.assertFalse(_is_valid_ipv4(value))
+
 
 if __name__ == "__main__":
     unittest.main()
