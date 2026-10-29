@@ -3,6 +3,7 @@
 import tempfile
 import unittest
 from contextlib import ExitStack
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -258,6 +259,20 @@ class TestAutoInstallBootOrder(unittest.TestCase):
         self.assertEqual(result.data[0]["reason"], InstallCons.NO_AVAILABLE_IP_LEFT_TIPS)
         self.assertEqual(self.boot_snapshots, [])
         self.remote.new_system.assert_not_called()
+
+    def test_occupied_ip_is_queried_once_per_batch(self):
+        occupied = "192.0.2.100"
+        self.workflow.settings = replace(self.workflow.settings, os_end_ip="192.0.2.102")
+        self.proxy.query_host_by_host_ip.side_effect = lambda ip: (
+            True, [object()] if ip == occupied else [])
+
+        result = self.install(host_count=2)
+
+        self.assertEqual(self.proxy.query_host_by_host_ip.call_count, 3)
+        self.assertEqual([call.args[0] for call in
+                          self.proxy.query_host_by_host_ip.call_args_list],
+                         [occupied, "192.0.2.101", "192.0.2.102"])
+        self.assertEqual([host["result"] for host in result.data], ["succeed", "succeed"])
 
     def test_storage_exception_preserves_partial_results_and_closes_session(self):
         self.proxy.query_host_by_bmc_ip.side_effect = RuntimeError("storage failed")

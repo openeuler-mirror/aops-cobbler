@@ -168,6 +168,7 @@ class InstallationWorkflow:
                 lifecycle = self.lifecycle_factory(host_proxy.session)
                 reserved = {}
                 host_ip_list = []  # 记录已经使用的IP地址
+                occupied_ips = set()  # 仅缓存本次请求中数据库确认已占用的IP
                 prepared_hosts = []
                 configuration_ready = False
                 for host in host_list:
@@ -182,7 +183,8 @@ class InstallationWorkflow:
 
                     # 16，分配主机IP
                     host_ip = distribute_ip(
-                        host_proxy, host_ip_list, self.settings.os_start_ip, self.settings.os_end_ip)
+                        host_proxy, host_ip_list, self.settings.os_start_ip,
+                        self.settings.os_end_ip, occupied_ips=occupied_ips)
                     if not host_ip:
                         host["reason"] = InstallCons.NO_AVAILABLE_IP_LEFT_TIPS
                         continue
@@ -383,7 +385,7 @@ def update_pxe_config_files(config_dir=InstallCons.PXE_CONFIG_DIR):
     return updated_count
 
 
-def distribute_ip(host_proxy, host_ip_list, os_start_ip, os_end_ip):
+def distribute_ip(host_proxy, host_ip_list, os_start_ip, os_end_ip, *, occupied_ips=None):
     start_ip = ipaddress.IPv4Address(os_start_ip)
     end_ip = ipaddress.IPv4Address(os_end_ip)
 
@@ -392,11 +394,13 @@ def distribute_ip(host_proxy, host_ip_list, os_start_ip, os_end_ip):
         return None
 
     allocated_ips = set(host_ip_list)
+    if occupied_ips is None:
+        occupied_ips = set()
 
     for ip_int in range(int(start_ip), int(end_ip) + 1):
         ip_str = str(ipaddress.IPv4Address(ip_int))
 
-        if ip_str in allocated_ips:
+        if ip_str in allocated_ips or ip_str in occupied_ips:
             continue
 
         query_result, hosts = host_proxy.query_host_by_host_ip(ip_str)
@@ -405,8 +409,21 @@ def distribute_ip(host_proxy, host_ip_list, os_start_ip, os_end_ip):
             return None
 
         if hosts:
+            occupied_ips.add(ip_str)
             continue
 
         return ip_str
+
+    # 缓存只代表先前的查询结果。地址耗尽时复查一次，允许复用期间被释放的IP。
+    for ip_str in sorted(occupied_ips, key=ipaddress.IPv4Address):
+        if ip_str in allocated_ips:
+            continue
+        query_result, hosts = host_proxy.query_host_by_host_ip(ip_str)
+        if not query_result:
+            LOGGER.error("Failed to query host IP: %s", ip_str)
+            return None
+        if not hosts:
+            occupied_ips.remove(ip_str)
+            return ip_str
 
     return None
