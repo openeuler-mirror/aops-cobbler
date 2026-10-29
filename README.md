@@ -88,6 +88,7 @@ python -m cobbled.manage
 | `[host] os_start_ip / os_end_ip / subnet_mask` | 示例地址范围 / `24` | 设置可分配的装机 IP 范围及掩码，与实际装机网络保持一致。 |
 | `[host] check_bmc_connection` | `1` | 是否检查 BMC 连通性，启用时需要 `ipmitool` 和可用的 BMC 网络。 |
 | `[host] scheduler_interval_time / os_installed_time` | `5` / `30` | 安装状态检查间隔及安装超时，单位为分钟。 |
+| `[host] rpm_search_timeout` | `30` | 每个 `yum search` 查询的超时时间，单位为秒，可设为 1–30；`install_rpm` 最多 10 个包、总长 256 字符。 |
 | `[host] os_install_log_dir` | `/var/log/osinstall/` | 安装日志目录，需配合装机日志接收服务配置。 |
 | `[uwsgi]` | 见模板 | RPM/systemd 启动时使用；本地 `python -m cobbled.manage` 不使用 uWSGI。 |
 

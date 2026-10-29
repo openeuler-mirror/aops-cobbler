@@ -24,13 +24,15 @@ import subprocess
 import uuid
 
 from cobbled.conf import configuration
-from cobbled.conf.constant import ISOCons, KsCons, HostCons, ScriptCons
+from cobbled.conf.constant import ISOCons, KsCons, HostCons, ScriptCons, InstallCons
 
 from cobbled.util.aes_util import AesUtil
 from cobbled.util.response_util import ResUtil
 
 
 IPMITOOL_TIMEOUT = 30
+MAX_INSTALL_RPM_LENGTH = 256
+MAX_INSTALL_RPM_PACKAGES = 10
 
 
 def run_ipmitool(bmc_ip, bmc_user_name, bmc_passwd, *command):
@@ -119,6 +121,18 @@ class KsChecker:
 
 
 class InstallChecker:
+    @staticmethod
+    def check_install_rpm(install_rpm):
+        if install_rpm is None or install_rpm == "":
+            return None
+        package_name = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]*")
+        if not isinstance(install_rpm, str) or len(install_rpm) > MAX_INSTALL_RPM_LENGTH:
+            return ResUtil.failed(InstallCons.CHECK_RPM_NAME_TIPS)
+        rpm_names = install_rpm.split(",")
+        if (len(rpm_names) > MAX_INSTALL_RPM_PACKAGES or
+                any(not package_name.fullmatch(name) for name in rpm_names)):
+            return ResUtil.failed(InstallCons.CHECK_RPM_NAME_TIPS)
+
     @staticmethod
     def check_host_list(host_list):
         check_result = HostChecker.check_host_list(host_list, dict)

@@ -38,6 +38,7 @@ class InstallationSettings:
     subnet_mask: Union[str, int]
     os_start_ip: str
     os_end_ip: str
+    rpm_search_timeout: int = 30
     pxe_config_dir: str = InstallCons.PXE_CONFIG_DIR
     after_install_script: str = "/opt/aops/script/after_os_installed.sh"
 
@@ -97,7 +98,16 @@ class InstallationWorkflow:
             if install_rpm:
                 rpm_list = install_rpm.split(",")
                 for rpm in rpm_list:
-                    check_rpm_result = subprocess.run(['yum', 'search', rpm], capture_output=True, text=True)
+                    try:
+                        check_rpm_result = subprocess.run(
+                            ['yum', 'search', rpm], capture_output=True, text=True,
+                            timeout=self.settings.rpm_search_timeout)
+                    except subprocess.TimeoutExpired:
+                        LOGGER.exception("RPM package search timed out for %s", rpm)
+                        return InstallationResult.failed(InstallCons.CHECK_RPM_TIMEOUT_TIPS + rpm)
+                    except OSError:
+                        LOGGER.exception("Failed to run RPM package search for %s", rpm)
+                        return InstallationResult.failed(InstallCons.CHECK_RPM_RUN_TIPS + rpm)
                     if check_rpm_result.returncode or 'No matches found' in check_rpm_result.stderr:
                         return InstallationResult.failed(InstallCons.CHECK_RPM_EXITS_TIPS + rpm)
 

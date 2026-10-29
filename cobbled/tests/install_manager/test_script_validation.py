@@ -184,6 +184,21 @@ class TestAutoInstallScriptValidation(unittest.TestCase):
                 self.assertNotIn("outside-script", content)
                 self.assertEqual(content.count("%post"), 1)
 
+    def test_generated_template_protects_hash_and_shell_substitution(self):
+        (self.ks_dir / "test.ks").write_text(
+            "rootpw --iscrypted $6$salt$hash\n", encoding="utf-8")
+        self.read_file.side_effect = lambda path: (
+            "installation_round=$(sed -n test /proc/cmdline)"
+            if path == "/opt/aops/script/after_os_installed.sh"
+            else Path(path).read_text(encoding="utf-8"))
+
+        response = self.post()
+
+        self.assertEqual(response.status_code, 200)
+        content = self.remote.write_autoinstall_template.call_args.args[1]
+        self.assertIn("#raw\nrootpw --iscrypted $6$salt$hash\n#end raw", content)
+        self.assertIn(r"installation_round=\$(sed -n test /proc/cmdline)", content)
+
     def test_allows_symlink_resolving_inside_directory(self):
         script = self.script_dir / "setup.sh"
         script.write_text("echo custom-script", encoding="utf-8")
