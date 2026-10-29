@@ -232,6 +232,12 @@ class TestHostProxyCRUD(unittest.TestCase):
         self.assertIsNone(row.installation_round)
         self.assertEqual(data["unexpected"], "ignored")
 
+    def test_add_host_rejects_missing_required_fields(self):
+        data = self.make_host_data(index=1)
+        data.pop("bmc_ip")
+        self.assertFalse(self.proxy.add_host(data))
+        self.assertEqual(self.proxy.session.query(RawHost).count(), 0)
+
     def test_update_host_info_filters_non_writable_fields(self):
         self.proxy.insert(RawHost, self.make_host_data(index=1))
         self.assertTrue(self.proxy.update_host_info({
