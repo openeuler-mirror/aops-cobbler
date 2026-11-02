@@ -16,6 +16,7 @@ from cobbled.database.host import HostProxy
 from cobbled.database.table import Base, RawHost, InstallationCleanup
 from cobbled.install_manager.lifecycle import InstallationConflict, InstallationLifecycle
 from cobbled.install_manager import view
+from cobbled.log.log import LOGGER
 
 
 class TestInstallationLifecycle(unittest.TestCase):
@@ -217,6 +218,10 @@ class TestInstallationLifecycle(unittest.TestCase):
                     'bmc_ip': '192.0.2.1', 'installation_round': round_id})
                 self.assertEqual(response.status_code, 400)
             response = client.post('/notify', json={
+                'bmc_ip': '192.0.2.1', 'installation_round': self.round_id,
+                'result': 'unknown'})
+            self.assertEqual(response.status_code, 400)
+            response = client.post('/notify', json={
                 'bmc_ip': '192.0.2.1', 'installation_round': self.round_id})
             self.assertEqual(response.status_code, 200)
             remote.assert_not_called()
@@ -236,3 +241,98 @@ class TestInstallationLifecycle(unittest.TestCase):
         self.assertEqual(response.status_code, 500)
         self.assertEqual(self.host().status, 3)
         self.assertEqual(self.session.query(InstallationCleanup).count(), 0)
+
+    def test_http_failure_notification_persists_failed_result(self):
+        self.lifecycle.prepare_start('host-1', self.round_id, '192.0.2.100')
+        app = Flask(__name__)
+        Api(app).add_resource(view.Notify, '/notify')
+        proxy = Mock()
+        proxy.session = self.session
+        proxy.__enter__ = Mock(return_value=proxy)
+        proxy.__exit__ = Mock(return_value=False)
+        with patch.object(view, 'HostProxy', return_value=proxy):
+            response = app.test_client().post('/notify', json={
+                'bmc_ip': '192.0.2.1', 'installation_round': self.round_id,
+                'result': 'failed'},
+                environ_overrides={'REMOTE_ADDR': '192.0.2.100'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.host().status, 4)
+        self.assertEqual(self.task().state, 'pending')
+
+    def test_failure_notification_from_different_nic_warns_and_persists_result(self):
+        self.lifecycle.prepare_start('host-1', self.round_id, '192.0.2.100')
+        app = Flask(__name__)
+        Api(app).add_resource(view.Notify, '/notify')
+        proxy = Mock()
+        proxy.session = self.session
+        proxy.__enter__ = Mock(return_value=proxy)
+        proxy.__exit__ = Mock(return_value=False)
+        payload = {'bmc_ip': '192.0.2.1', 'installation_round': self.round_id,
+                   'result': 'failed'}
+        with patch.object(view, 'HostProxy', return_value=proxy):
+            with self.assertLogs(LOGGER, level='WARNING') as captured:
+                response = app.test_client().post(
+                    '/notify', json=payload,
+                    environ_overrides={'REMOTE_ADDR': '198.51.100.11'})
+            retry = app.test_client().post(
+                '/notify', json=payload,
+                environ_overrides={'REMOTE_ADDR': '198.51.100.11'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(retry.status_code, 200)
+        self.assertTrue(any('198.51.100.11' in line and '192.0.2.100' in line
+                            for line in captured.output))
+        self.assertEqual(self.host().status, 4)
+        self.assertEqual(self.host().host_ip, '192.0.2.100')
+        self.assertEqual(self.task().state, 'pending')
+
+    def test_failure_notification_rejects_mismatched_bmc_or_round(self):
+        self.session.add(RawHost(
+            host_id='host-2', host_name='other', bmc_ip='192.0.2.2',
+            bmc_user_name='user', bmc_passwd='secret', host_mac='aa:bb:cc:dd:ee:00',
+            status=0, update_time=self.now))
+        self.session.commit()
+        self.lifecycle.prepare_start('host-1', self.round_id, '192.0.2.100')
+        with self.assertRaises(InstallationConflict):
+            self.lifecycle.notify('192.0.2.2', self.round_id,
+                                  '192.0.2.100', succeeded=False)
+        with self.assertRaises(InstallationConflict):
+            self.lifecycle.notify(None, str(uuid4()),
+                                  '192.0.2.100', succeeded=False)
+        self.assertEqual(self.host().status, 3)
+        self.assertEqual(self.session.query(InstallationCleanup).count(), 0)
+
+    def test_round_only_failure_notification_from_different_nic_warns_and_persists(self):
+        self.lifecycle.prepare_start('host-1', self.round_id, '192.0.2.100')
+        app = Flask(__name__)
+        Api(app).add_resource(view.Notify, '/notify')
+        proxy = Mock()
+        proxy.session = self.session
+        proxy.__enter__ = Mock(return_value=proxy)
+        proxy.__exit__ = Mock(return_value=False)
+        payload = {'installation_round': self.round_id, 'result': 'failed'}
+        with patch.object(view, 'HostProxy', return_value=proxy):
+            with self.assertLogs(LOGGER, level='WARNING') as captured:
+                response = app.test_client().post(
+                    '/notify', json=payload,
+                    environ_overrides={'REMOTE_ADDR': '198.51.100.11'})
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(any('198.51.100.11' in line for line in captured.output))
+        self.assertEqual(self.host().status, 4)
+        self.assertEqual(self.host().host_ip, '192.0.2.100')
+        self.assertEqual(self.task().state, 'pending')
+
+    def test_round_only_success_from_different_nic_warns_and_updates_host_ip(self):
+        self.lifecycle.prepare_start('host-1', self.round_id, '192.0.2.100')
+        with self.assertLogs(LOGGER, level='WARNING') as captured:
+            self.lifecycle.notify(None, self.round_id, '198.51.100.11')
+        self.assertTrue(any('198.51.100.11' in line and '192.0.2.100' in line
+                            for line in captured.output))
+        self.assertEqual(self.host().status, 1)
+        self.assertEqual(self.host().host_ip, '198.51.100.11')
+        self.assertEqual(self.task().state, 'pending')
+
+    def test_round_only_late_success_overrides_timeout(self):
+        self.lifecycle.prepare_start('host-1', self.round_id, '192.0.2.100')
+        self.finish(succeeded=False)
+        self.lifecycle.notify(None, self.round_id, '192.0.2.100')
+        self.assertEqual(self.host().status, 1)

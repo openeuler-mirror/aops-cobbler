@@ -86,6 +86,7 @@ python -m cobbled.manage
 | `[ks] http_dir` | `/var/www/html/` | HTTP 资源根目录，需可写且能通过 HTTP 提供装机资源。 |
 | `[script] script_dir / max_content_length` | `/opt/aops/cobbler/script/upload` / `10240` | 脚本上传目录及单文件大小上限，单位为字节。 |
 | `[host] os_start_ip / os_end_ip / subnet_mask` | 示例地址范围 / `24` | 设置可分配的装机 IP 范围及掩码，与实际装机网络保持一致。 |
+| `[host] gateway` | 空 | 可选静态网关；未配置时沿用装机网卡当前默认路由，若也没有默认路由则保留网卡原有网关配置（无原有配置则不写网关）。装机请求中的 `gateway` 可覆盖此值。 |
 | `[host] check_bmc_connection` | `1` | 是否检查 BMC 连通性，启用时需要 `ipmitool` 和可用的 BMC 网络。 |
 | `[host] scheduler_interval_time / os_installed_time` | `5` / `30` | 安装状态检查间隔及安装超时，单位为分钟。 |
 | `[host] rpm_search_timeout` | `30` | 每个 `yum search` 查询的超时时间，单位为秒，可设为 1–30；`install_rpm` 最多 10 个包、总长 256 字符。 |

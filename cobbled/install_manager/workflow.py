@@ -15,6 +15,7 @@
 import ipaddress
 import os
 import re
+import shlex
 import subprocess
 from dataclasses import dataclass
 from typing import Optional, Union
@@ -27,6 +28,7 @@ from cobbled.install_manager.lifecycle import (
 )
 from cobbled.log.log import LOGGER
 from cobbled.util.file_util import FileUtil
+from cobbled.util.validate_util import parse_install_rpms
 
 
 @dataclass(frozen=True)
@@ -39,6 +41,7 @@ class InstallationSettings:
     os_start_ip: str
     os_end_ip: str
     rpm_search_timeout: int = 30
+    gateway: str = ""
     pxe_config_dir: str = InstallCons.PXE_CONFIG_DIR
     after_install_script: str = "/opt/aops/script/after_os_installed.sh"
 
@@ -71,7 +74,8 @@ class InstallationWorkflow:
         self.power = power
         self.lifecycle_factory = lifecycle_factory or InstallationLifecycle
 
-    def run(self, *, host_list, ks_name, iso_name, arch, script_name=None, install_rpm=None):
+    def run(self, *, host_list, ks_name, iso_name, arch, script_name=None, install_rpm=None,
+            gateway=None):
         LOGGER.info("start to auto install")
         code = 200
         msg = InstallCons.AUTO_INSTALL_SUCCESS_TIPS
@@ -95,8 +99,10 @@ class InstallationWorkflow:
                     return InstallationResult.failed(ScriptCons.CHECK_SCRIPT_EXITS_TIPS)
 
             # 5，如果install_rpm不为空，则检查rpm包是否存在
-            if install_rpm:
-                rpm_list = install_rpm.split(",")
+            rpm_list = parse_install_rpms(install_rpm)
+            if rpm_list is None:
+                return InstallationResult.failed(InstallCons.CHECK_RPM_NAME_TIPS)
+            if rpm_list:
                 for rpm in rpm_list:
                     try:
                         check_rpm_result = subprocess.run(
@@ -130,8 +136,27 @@ class InstallationWorkflow:
             # 读取操作系统安装完成以后需要执行的脚本:ipmitool等自定义rpm包的安装
             # 在ks文件中添加调用通知接口内容，用于在操作系统安装完成后更新主机状态，否则aops-cobbler服务将无法知道操作系统是否已经安装完成
             after_os_installed = FileUtil.read_file_content(self.settings.after_install_script)
+            selected_gateway = self.settings.gateway if gateway is None else gateway
+            try:
+                prefix = ipaddress.IPv4Network(
+                    "0.0.0.0/" + str(self.settings.subnet_mask)).prefixlen
+                if not isinstance(selected_gateway, str):
+                    raise ValueError("网关必须是 IPv4 地址字符串")
+                if selected_gateway:
+                    address = ipaddress.IPv4Address(selected_gateway)
+                    network = ipaddress.IPv4Network(
+                        f"{self.settings.os_start_ip}/{prefix}", strict=False)
+                    if address not in network or (network.num_addresses > 2 and address in (
+                            network.network_address, network.broadcast_address)):
+                        raise ValueError("网关不在装机网段的可用地址范围内")
+                    start = ipaddress.IPv4Address(self.settings.os_start_ip)
+                    end = ipaddress.IPv4Address(self.settings.os_end_ip)
+                    if start <= address <= end:
+                        raise ValueError("网关与装机 IP 分配范围冲突")
+            except ValueError as error:
+                return InstallationResult.failed(f"装机网络配置无效：{error}")
             after_os_installed = render_after_os_installed_script(
-                after_os_installed, client_ip, port, self.settings.subnet_mask, install_rpm)
+                after_os_installed, client_ip, port, prefix, install_rpm, selected_gateway)
             ks_content = ks_content + "\n%post\n" + escape_shell_for_cheetah(after_os_installed) + "\n%end\n"
 
             # 11，将自定义脚本内容添加到ks文件中
@@ -189,7 +214,7 @@ class InstallationWorkflow:
                             installation_config.prepare_host(
                                 system_name=system_name, host_name=host_name,
                                 round_id=round_id, host_mac=hosts[0].host_mac,
-                                host_ip=host_ip)
+                                host_ip=host_ip, bmc_ip=host["bmc_ip"])
                     except Exception:
                         host["reason"] = InstallCons.COBBLER_SYSTEM_TIPS
                         lifecycle.finish(hosts[0].host_id, round_id, succeeded=False)
@@ -319,13 +344,18 @@ def prefix_pxe_boot_arguments(content):
     return _LEGACY_PXE_FLAG_ARGUMENT.sub("inst.kssendmac", content)
 
 
-def render_after_os_installed_script(template, client_ip, port, subnet_mask, install_rpm=None):
+def render_after_os_installed_script(template, client_ip, port, prefix, install_rpm=None,
+                                     gateway=""):
     """Render values that are only known when an installation is started."""
+    rpm_list = parse_install_rpms(install_rpm)
+    if rpm_list is None:
+        raise ValueError(InstallCons.CHECK_RPM_NAME_TIPS)
     rendered = template.replace("127.0.0.1", client_ip).replace("8888", str(port))
-    rendered = rendered.replace("127.0.0.254", get_default_gateway(client_ip, subnet_mask))
-    rendered = rendered.replace("s_u_b_n_e_t_m_a_s_k", str(subnet_mask))
-    if install_rpm:
-        rendered = rendered.replace("r_p_m_s", install_rpm.replace(',', ' '), 1)
+    rendered = rendered.replace("g_a_t_e_w_a_y", gateway)
+    rendered = rendered.replace("s_u_b_n_e_t_m_a_s_k", str(prefix))
+    if rpm_list:
+        package_args = " ".join(shlex.quote(package) for package in rpm_list)
+        rendered = rendered.replace("r_p_m_s", package_args, 1)
     return rendered
 
 
@@ -380,15 +410,3 @@ def distribute_ip(host_proxy, host_ip_list, os_start_ip, os_end_ip):
         return ip_str
 
     return None
-
-
-def get_default_gateway(ip_addr, subnet_mask):
-    # 配置文件里纯数字的掩码会被 Config 解析成 int，拼接前统一转成字符串
-    network = ipaddress.IPv4Network((ip_addr + '/' + str(subnet_mask)), strict=False)
-    # 网关取网段内最后一个可用主机地址
-    if network.num_addresses >= 4:
-        default_gateway = str(network.network_address + (network.num_addresses - 2))
-    else:
-        # /31、/32 这类小网段没有可用的网关地址，使用网络地址本身
-        default_gateway = str(network.network_address)
-    return default_gateway

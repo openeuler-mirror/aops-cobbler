@@ -79,7 +79,8 @@ class InstallationLifecycle:
             host.host_ip = host_ip
             host.installation_started_at = self.clock()
 
-    def finish(self, host_id, round_id, *, succeeded, host_ip=None, expected_started_at=None):
+    def finish(self, host_id, round_id, *, succeeded, host_ip=None,
+               expected_started_at=None, verify_source=False):
         """结果与清理任务同事务提交；失败不能覆盖已确认的安装完成。"""
         try:
             host = self._host(host_id)
@@ -88,6 +89,12 @@ class InstallationLifecycle:
             if expected_started_at is not None and host.installation_started_at != expected_started_at:
                 raise InstallationConflict("安装启动时间已更新")
             task = self._cleanup(host_id)
+            if task is not None and task.round_id != round_id:
+                raise InstallationConflict("清理任务与安装轮次不匹配")
+            if verify_source and (not host_ip or host.host_ip != host_ip):
+                LOGGER.warning(
+                    "Installation notification source %s does not match reserved IP %s for host %s, round %s",
+                    host_ip, host.host_ip, host_id, round_id)
             if succeeded:
                 host.status = 1
                 if host_ip:
@@ -99,18 +106,22 @@ class InstallationLifecycle:
                     host_id=host_id, round_id=round_id,
                     system_name=host.installation_system, state="pending",
                     failures=0, next_attempt_at=self.clock()))
-            elif task.round_id != round_id:
-                raise InstallationConflict("清理任务与安装轮次不匹配")
             self.session.commit()
         except Exception:
             self.session.rollback()
             raise
 
-    def notify(self, bmc_ip, round_id, host_ip):
-        host = self.session.query(RawHost).filter_by(bmc_ip=bmc_ip).one_or_none()
+    def notify(self, bmc_ip, round_id, host_ip, *, succeeded=True):
+        if not round_id:
+            raise InstallationConflict("安装轮次缺失或不匹配")
+        if bmc_ip is None:
+            host = self.session.query(RawHost).filter_by(installation_round=round_id).one_or_none()
+        else:
+            host = self.session.query(RawHost).filter_by(bmc_ip=bmc_ip).one_or_none()
         if host is None:
             raise InstallationConflict("主机不存在")
-        self.finish(host.host_id, round_id, succeeded=True, host_ip=host_ip)
+        self.finish(host.host_id, round_id, succeeded=succeeded, host_ip=host_ip,
+                    verify_source=not succeeded or bmc_ip is None)
 
     def clean_due(self, connect_cobbler, limit=100):
         now = self.clock()

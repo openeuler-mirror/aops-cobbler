@@ -62,6 +62,7 @@ os_end_ip = configuration.host.get("OS_END_IP")
 
 # 从配置文件里获取装机网段掩码
 subnet_mask = configuration.host.get("SUBNET_MASK")
+gateway = configuration.host.get("GATEWAY", "")
 
 HOST_SCHEDULER_BATCH_SIZE = 100
 
@@ -80,6 +81,7 @@ class AutoInstall(JsonObjectResource):
         arch = request.json.get("arch")
         script_name = request.json.get("script_name")
         install_rpm = request.json.get("install_rpm")
+        requested_gateway = request.json.get("gateway")
 
         # 2，基本校验
         check_result = ISOChecker.check_iso_name(iso_name) or ISOChecker.check_iso_arch(
@@ -106,6 +108,7 @@ class AutoInstall(JsonObjectResource):
                 os_start_ip=os_start_ip,
                 os_end_ip=os_end_ip,
                 rpm_search_timeout=configuration.host.get("RPM_SEARCH_TIMEOUT", 30),
+                gateway=gateway,
             ),
             connect_cobbler=lambda: RemoteServer(timeout=30).get_remote_server(),
             host_store=HostProxy,
@@ -113,7 +116,7 @@ class AutoInstall(JsonObjectResource):
         )
         result = workflow.run(
             host_list=host_list, ks_name=ks_name, iso_name=iso_name, arch=arch,
-            script_name=script_name, install_rpm=install_rpm,
+            script_name=script_name, install_rpm=install_rpm, gateway=requested_gateway,
         )
         return ResUtil.success_or_failed(result.code, result.msg, result.data)
 
@@ -129,9 +132,10 @@ class Notify(JsonObjectResource):
         # 获取并校验请求参数
         bmc_ip = request.json.get("bmc_ip")
         service_ip = request.environ.get("REMOTE_ADDR")
-        check_result = HostChecker.check_bmc_ip(bmc_ip)
-        if check_result:
-            return check_result
+        if bmc_ip is not None:
+            check_result = HostChecker.check_bmc_ip(bmc_ip)
+            if check_result:
+                return check_result
 
         round_id = request.json.get("installation_round")
         try:
@@ -139,9 +143,13 @@ class Notify(JsonObjectResource):
                 raise ValueError()
         except ValueError:
             return ResUtil.failed("installation_round 缺失或格式错误")
+        result = request.json.get("result", "success")
+        if result not in ("success", "failed"):
+            return ResUtil.failed("安装结果无效")
         try:
             with HostProxy() as host_proxy:
-                InstallationLifecycle(host_proxy.session).notify(bmc_ip, round_id, service_ip)
+                InstallationLifecycle(host_proxy.session).notify(
+                    bmc_ip, round_id, service_ip, succeeded=result == "success")
         except InstallationConflict as error:
             return ResUtil.failed(str(error))
         except Exception:

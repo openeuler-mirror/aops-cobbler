@@ -33,6 +33,19 @@ from cobbled.util.response_util import ResUtil
 IPMITOOL_TIMEOUT = 30
 MAX_INSTALL_RPM_LENGTH = 256
 MAX_INSTALL_RPM_PACKAGES = 10
+_RPM_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]*")
+
+
+def parse_install_rpms(install_rpm):
+    """Return normalized package names, or None for an invalid request."""
+    if install_rpm is None or install_rpm == "":
+        return ()
+    if not isinstance(install_rpm, str) or len(install_rpm) > MAX_INSTALL_RPM_LENGTH:
+        return None
+    names = tuple(name.strip() for name in install_rpm.split(",") if name.strip())
+    if len(names) > MAX_INSTALL_RPM_PACKAGES or any(not _RPM_NAME.fullmatch(name) for name in names):
+        return None
+    return names
 
 
 def run_ipmitool(bmc_ip, bmc_user_name, bmc_passwd, *command):
@@ -123,14 +136,7 @@ class KsChecker:
 class InstallChecker:
     @staticmethod
     def check_install_rpm(install_rpm):
-        if install_rpm is None or install_rpm == "":
-            return None
-        package_name = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]*")
-        if not isinstance(install_rpm, str) or len(install_rpm) > MAX_INSTALL_RPM_LENGTH:
-            return ResUtil.failed(InstallCons.CHECK_RPM_NAME_TIPS)
-        rpm_names = install_rpm.split(",")
-        if (len(rpm_names) > MAX_INSTALL_RPM_PACKAGES or
-                any(not package_name.fullmatch(name) for name in rpm_names)):
+        if parse_install_rpms(install_rpm) is None:
             return ResUtil.failed(InstallCons.CHECK_RPM_NAME_TIPS)
 
     @staticmethod

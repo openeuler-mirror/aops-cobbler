@@ -199,6 +199,62 @@ class TestAutoInstallScriptValidation(unittest.TestCase):
         self.assertIn("#raw\nrootpw --iscrypted $6$salt$hash\n#end raw", content)
         self.assertIn(r"installation_round=\$(sed -n test /proc/cmdline)", content)
 
+    def test_gateway_override_is_rendered(self):
+        script_path = Path(__file__).parents[3] / "script" / "after_os_installed.sh"
+        with patch.object(view, "os_start_ip", "10.10.192.210"), patch.object(
+                view, "os_end_ip", "10.10.192.211"), patch.object(
+                view, "subnet_mask", "24"), patch.object(
+                workflow.FileUtil, "read_file_content", side_effect=lambda path:
+                          script_path.read_text(encoding="utf-8") if path.endswith("after_os_installed.sh")
+                          else Path(path).read_text(encoding="utf-8")):
+            response = self.post(gateway="10.10.192.1")
+        self.assertEqual(response.status_code, 200)
+        content = self.remote.write_autoinstall_template.call_args.args[1]
+        self.assertIn("configured_gateway='10.10.192.1'", content)
+        self.assertIn("prefix='24'", content)
+
+    def test_invalid_gateway_is_rejected_before_writing_template(self):
+        for gateway in ("999.1.1.1", "192.0.2.1", 42):
+            with self.subTest(gateway=gateway):
+                response = self.post(gateway=gateway)
+                self.assertEqual(response.status_code, 400)
+                self.remote.write_autoinstall_template.assert_not_called()
+
+    def test_dotted_netmask_is_normalized_to_prefix(self):
+        script_path = Path(__file__).parents[3] / "script" / "after_os_installed.sh"
+        with patch.object(view, "os_start_ip", "10.10.192.210"), patch.object(
+                view, "os_end_ip", "10.10.192.211"), patch.object(
+                view, "subnet_mask", "255.255.255.0"), patch.object(
+                workflow.FileUtil, "read_file_content", side_effect=lambda path:
+                script_path.read_text(encoding="utf-8") if path.endswith("after_os_installed.sh")
+                else Path(path).read_text(encoding="utf-8")):
+            response = self.post()
+        self.assertEqual(response.status_code, 200)
+        content = self.remote.write_autoinstall_template.call_args.args[1]
+        self.assertIn("prefix='24'", content)
+
+    def test_point_to_point_gateway_is_allowed_outside_allocatable_pool(self):
+        with patch.object(view, "os_start_ip", "192.0.2.1"), patch.object(
+                view, "os_end_ip", "192.0.2.1"), patch.object(
+                view, "subnet_mask", "31"):
+            response = self.post(gateway="192.0.2.0")
+        self.assertEqual(response.status_code, 200)
+        self.remote.write_autoinstall_template.assert_called_once()
+
+    def test_point_to_point_gateway_in_allocatable_pool_is_rejected(self):
+        with patch.object(view, "os_start_ip", "192.0.2.1"), patch.object(
+                view, "os_end_ip", "192.0.2.1"), patch.object(
+                view, "subnet_mask", "31"):
+            response = self.post(gateway="192.0.2.1")
+        self.assertEqual(response.status_code, 400)
+        self.remote.write_autoinstall_template.assert_not_called()
+
+    def test_invalid_netmask_is_rejected_before_writing_template(self):
+        with patch.object(view, "subnet_mask", "not-a-mask"):
+            response = self.post()
+        self.assertEqual(response.status_code, 400)
+        self.remote.write_autoinstall_template.assert_not_called()
+
     def test_allows_symlink_resolving_inside_directory(self):
         script = self.script_dir / "setup.sh"
         script.write_text("echo custom-script", encoding="utf-8")

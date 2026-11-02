@@ -26,7 +26,7 @@ class TestInstallationConfiguration(unittest.TestCase):
     def prepare_host(self):
         self.config.prepare_host(system_name='host-1-round', host_name='host-1',
                                  round_id='round', host_mac='aa:bb:cc:dd:ee:ff',
-                                 host_ip='192.0.2.10')
+                                 host_ip='192.0.2.10', bmc_ip='192.0.2.1')
 
     def test_missing_image_has_no_profile_lookup_or_writes(self):
         for missing in (None, {}, False, '~'):
@@ -76,7 +76,8 @@ class TestInstallationConfiguration(unittest.TestCase):
             call.modify_system('system-handle', 'hostname', 'host-1', 'token'),
             call.modify_system('system-handle', 'profile', 'image-x86_64', 'token'),
             call.modify_system('system-handle', 'kernel_options',
-                               {'aops_installation_round': 'round'}, 'token'),
+                               {'aops_installation_round': 'round',
+                                'aops_bmc_ip': '192.0.2.1'}, 'token'),
             call.modify_system('system-handle', 'modify_interface', {
                 'macaddress-net0': 'aa:bb:cc:dd:ee:ff',
                 'ipaddress-net0': '192.0.2.10', 'dhcptag-net0': 'default'}, 'token'),
