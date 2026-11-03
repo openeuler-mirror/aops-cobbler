@@ -210,7 +210,7 @@ class HostChecker:
     def check_host_status(status):
         # status不能为空，且只能是0，1，2，3，4
         # 0表示裸机，1表示已安装，2表示已纳管，3表示装机中，4表示安装失败
-        if status not in {0, 1, 2, 3, 4}:
+        if isinstance(status, bool) or not isinstance(status, int) or status not in {0, 1, 2, 3, 4}:
             return ResUtil.failed(HostCons.CHECK_HOST_STATUS_TIPS)
 
     @staticmethod
