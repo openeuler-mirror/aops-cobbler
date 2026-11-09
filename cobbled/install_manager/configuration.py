@@ -69,7 +69,7 @@ class CobblerInstallationConfiguration:
             if not self._remote.sync(self._token):
                 raise RuntimeError(InstallCons.COBBLER_SYNC_TIPS)
 
-    def prepare_host(self, *, system_name, host_name, round_id, host_mac, host_ip):
+    def prepare_host(self, *, system_name, host_name, round_id, host_mac, host_ip, bmc_ip):
         """准备单轮配置并同步 DHCP；调用方负责持有该主机的轮次锁。"""
         with _operation("创建 Cobbler 配置"):
             system_id = self._remote.new_system(self._token)
@@ -77,7 +77,8 @@ class CobblerInstallationConfiguration:
                 ("name", system_name),
                 ("hostname", host_name),
                 ("profile", self._profile.get("name")),
-                ("kernel_options", {"aops_installation_round": round_id}),
+                ("kernel_options", {"aops_installation_round": round_id,
+                                    "aops_bmc_ip": bmc_ip}),
                 ("modify_interface", {
                     "macaddress-net0": host_mac,
                     "ipaddress-net0": host_ip,

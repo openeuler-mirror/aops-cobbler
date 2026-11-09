@@ -21,7 +21,7 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -30,61 +30,64 @@ from cobbled.database.host import HostProxy
 from cobbled.database.table import Base, RawHost
 from cobbled.install_manager import view
 from cobbled.install_manager.workflow import (
-    InstallationSettings, InstallationWorkflow, get_default_gateway,
-    render_after_os_installed_script)
+    InstallationSettings, InstallationWorkflow, render_after_os_installed_script)
 
 
-class TestGetDefaultGateway(unittest.TestCase):
-
-    def test_accepts_integer_mask_from_config(self):
-        """Config parses a purely numeric subnet_mask into an int."""
-        self.assertEqual(get_default_gateway("10.10.192.213", 24), "10.10.192.254")
-
-    def test_accepts_string_mask(self):
-        self.assertEqual(get_default_gateway("10.10.192.213", "24"), "10.10.192.254")
-
-    def test_accepts_dotted_netmask(self):
-        self.assertEqual(get_default_gateway("10.10.192.213", "255.255.255.0"),
-                         "10.10.192.254")
-
-    def test_uses_last_usable_host_of_subnet(self):
-        cases = {
-            "25": "10.10.192.254",
-            "23": "10.10.193.254",
-            "16": "10.10.255.254",
-            "30": "10.10.192.214",
-        }
-        for mask, expected in cases.items():
-            with self.subTest(mask=mask):
-                self.assertEqual(get_default_gateway("10.10.192.213", mask),
-                                 expected)
-
-    def test_very_large_subnet_does_not_overflow(self):
-        # 先加后减会在 /1 网段上产生 2**32 的中间值并抛 AddressValueError
-        self.assertEqual(get_default_gateway("128.0.0.1", 1), "255.255.255.254")
-
-    def test_tiny_subnets_fall_back_to_network_address(self):
-        self.assertEqual(get_default_gateway("10.10.192.213", 31),
-                         "10.10.192.212")
-        self.assertEqual(get_default_gateway("10.10.192.213", 32),
-                         "10.10.192.213")
-
-    def test_invalid_mask_raises(self):
-        with self.assertRaises(ValueError):
-            get_default_gateway("10.10.192.213", "not-a-mask")
+class TestAfterInstallScriptRendering(unittest.TestCase):
 
     def test_after_install_script_uses_configured_subnet_mask(self):
         script_path = Path(__file__).parents[3] / "script" / "after_os_installed.sh"
         script = script_path.read_text(encoding="utf-8")
 
         rendered_script = render_after_os_installed_script(
-            script, "10.10.192.1", 8888, 16)
+            script, "10.10.192.1", 8888, prefix=16)
 
-        self.assertIn('echo "PREFIX=16"', rendered_script)
+        self.assertIn("prefix='16'", rendered_script)
         self.assertNotIn("s_u_b_n_e_t_m_a_s_k", rendered_script)
+        self.assertIn("configured_gateway=''", rendered_script)
+
+    def test_gateway_in_allocatable_pool_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            Path(directory, "sample.ks").write_text("", encoding="utf-8")
+            for gateway in ("192.0.2.100", "192.0.2.105", "192.0.2.110"):
+                with self.subTest(gateway=gateway):
+                    settings = InstallationSettings(
+                        ks_dir=directory, script_dir=directory, client_ip="192.0.2.254",
+                        port=8888, subnet_mask=24, os_start_ip="192.0.2.100",
+                        os_end_ip="192.0.2.110", gateway=gateway)
+                    workflow = InstallationWorkflow(
+                        settings, connect_cobbler=Mock(),
+                        host_store=MagicMock(), power=Mock())
+                    with patch("cobbled.install_manager.workflow."
+                               "CobblerInstallationConfiguration.for_image",
+                               return_value=MagicMock()), \
+                            patch("cobbled.install_manager.workflow."
+                                  "FileUtil.read_file_content", return_value="echo installed"):
+                        result = workflow.run(host_list=[], ks_name="sample",
+                                              iso_name="sample", arch="x86_64")
+                    self.assertEqual(result.code, 400)
+                    self.assertIn("网关", result.msg)
 
 
 class TestRpmLookup(unittest.TestCase):
+
+    def test_lookup_uses_the_same_normalized_names_as_rendering(self):
+        with tempfile.TemporaryDirectory() as directory:
+            Path(directory, "sample.ks").write_text("", encoding="utf-8")
+            settings = InstallationSettings(
+                ks_dir=directory, script_dir=directory, client_ip="10.0.0.1",
+                port=8888, subnet_mask=24, os_start_ip="10.0.0.2",
+                os_end_ip="10.0.0.3")
+            workflow = InstallationWorkflow(
+                settings, connect_cobbler=Mock(), host_store=Mock(), power=Mock())
+            with patch("cobbled.install_manager.workflow.subprocess.run",
+                       return_value=subprocess.CompletedProcess([], 0, stderr="")) as run, \
+                    patch("cobbled.install_manager.workflow."
+                          "CobblerInstallationConfiguration.for_image", return_value=None):
+                workflow.run(host_list=[], ks_name="sample", iso_name="sample",
+                             arch="x86_64", install_rpm=" vim, ,git, ")
+            self.assertEqual([call.args[0] for call in run.call_args_list],
+                             [["yum", "search", "vim"], ["yum", "search", "git"]])
 
     def test_yum_lookup_is_bounded_and_timeout_returns_failure(self):
         with tempfile.TemporaryDirectory() as directory:

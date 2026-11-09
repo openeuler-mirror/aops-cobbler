@@ -44,14 +44,14 @@ class TestAutoInstallResponse(unittest.TestCase):
                 self.assertEqual(response.status_code, result.code)
                 self.assertEqual(response.json, expected)
                 factory.return_value.run.assert_called_once_with(
-                    **self.payload, script_name=None, install_rpm=None)
+                    **self.payload, script_name=None, install_rpm=None, gateway=None)
 
     def test_invalid_fields_are_rejected_before_workflow_construction(self):
         invalid_fields = (
             {"iso_name": 123}, {"ks_name": "../test"}, {"arch": "invalid"},
             {"host_list": [None]}, {"host_list": "host"},
             {"host_list": [{"bmc_ip": "invalid"}]}, {"script_name": "../test"},
-            {"install_rpm": ["vim"]}, {"install_rpm": "vim,,git"},
+            {"install_rpm": ["vim"]},
             {"install_rpm": "vim'; echo injected >&2; #"},
             {"install_rpm": "-y"},
             {"install_rpm": ",".join(["vim"] * 11)},
@@ -72,6 +72,15 @@ class TestAutoInstallResponse(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(factory.return_value.run.call_args.kwargs["install_rpm"],
                          "vim,python3-libs,libstdc++")
+
+    def test_accepts_whitespace_and_empty_package_entries(self):
+        with patch.object(view, "InstallationWorkflow") as factory:
+            factory.return_value.run.return_value = InstallationResult(200, "ok")
+            response = self.client.post(
+                "/install", json={**self.payload, "install_rpm": " vim, ,git, "})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(factory.return_value.run.call_args.kwargs["install_rpm"],
+                         " vim, ,git, ")
 
     def test_missing_kickstart_uses_real_workflow_without_external_connections(self):
         with tempfile.TemporaryDirectory() as directory, \

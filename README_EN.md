@@ -86,6 +86,7 @@ Review the following settings before deployment. See the [INI template](./conf/a
 | `[ks] http_dir` | `/var/www/html/` | HTTP resource root, writable and served over HTTP for installation resources. |
 | `[script] script_dir / max_content_length` | `/opt/aops/cobbler/script/upload` / `10240` | Script upload directory and per-file size limit in bytes. |
 | `[host] os_start_ip / os_end_ip / subnet_mask` | Example address range / `24` | Available installation IP range and subnet mask, matching the installation network. |
+| `[host] gateway` | Empty | Optional static gateway. Otherwise use the installation interface's current default route, or preserve any gateway already configured in its profile (leaving it unset if none exists). A `gateway` field in the installation request overrides this value. |
 | `[host] check_bmc_connection` | `1` | Enables BMC connectivity checks, requiring `ipmitool` and BMC network access. |
 | `[host] scheduler_interval_time / os_installed_time` | `5` / `30` | Installation status check interval and installation timeout in minutes. |
 | `[host] rpm_search_timeout` | `30` | Timeout in seconds for each `yum search` query (1–30); `install_rpm` accepts up to 10 packages and 256 characters. |
