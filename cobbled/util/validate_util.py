@@ -203,13 +203,13 @@ class HostChecker:
     @staticmethod
     def check_bmc_user_name(bmc_user_name):
         # bmc_user_name不能为空，且长度不超过128个字符
-        if not bmc_user_name or len(str(bmc_user_name)) > 128:
+        if not isinstance(bmc_user_name, str) or not bmc_user_name or len(bmc_user_name) > 128:
             return ResUtil.failed(HostCons.CHECK_BMC_USER_NAME_TIPS)
 
     @staticmethod
     def check_bmc_passwd(bmc_passwd):
         # bmc_passwd不能为空，且长度不超过128个字符
-        if not bmc_passwd or len(str(bmc_passwd)) > 128:
+        if not isinstance(bmc_passwd, str) or not bmc_passwd or len(bmc_passwd) > 128:
             return ResUtil.failed(HostCons.CHECK_BMC_PASSWD_TIPS)
 
     @staticmethod

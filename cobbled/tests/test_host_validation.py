@@ -96,6 +96,13 @@ class TestHostFieldValidation(unittest.TestCase):
                     HostChecker.check_bmc_user_name(value),
                     HostCons.CHECK_BMC_USER_NAME_TIPS)
 
+    def test_check_bmc_user_name_rejects_non_string(self):
+        for value in (123, 12.5, b"admin"):
+            with self.subTest(value=value):
+                self.assert_rejected(
+                    HostChecker.check_bmc_user_name(value),
+                    HostCons.CHECK_BMC_USER_NAME_TIPS)
+
     def test_check_bmc_passwd(self):
         self.assertIsNone(HostChecker.check_bmc_passwd("secret"))
         self.assertIsNone(HostChecker.check_bmc_passwd("a" * 128))
