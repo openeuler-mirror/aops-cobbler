@@ -201,6 +201,12 @@ class HostChecker:
             return ResUtil.failed(HostCons.CHECK_BMC_IP_TIPS)
 
     @staticmethod
+    def check_host_ip(host_ip):
+        # host_ip可以为空，不为空时必须满足相应规则
+        if host_ip not in (None, "") and not _is_valid_ipv4(host_ip):
+            return ResUtil.failed(HostCons.CHECK_HOST_IP_TIPS)
+
+    @staticmethod
     def check_bmc_user_name(bmc_user_name):
         # bmc_user_name不能为空，且长度不超过128个字符
         if not isinstance(bmc_user_name, str) or not bmc_user_name or len(bmc_user_name) > 128:

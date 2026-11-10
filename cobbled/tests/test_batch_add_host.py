@@ -121,6 +121,39 @@ class TestBatchAddHost(unittest.TestCase):
         self.assertEqual(inserted[0].host_name, "new")
         self.assertFalse(hasattr(inserted[0], "unexpected"))
 
+    def test_rejects_invalid_optional_host_fields(self):
+        cases = (
+            ("status", 5, HostCons.CHECK_HOST_STATUS_TIPS),
+            ("host_id", "not-a-uuid", HostCons.CHECK_HOST_ID_TIPS),
+            ("host_ip", "not-an-ip", HostCons.CHECK_HOST_IP_TIPS),
+        )
+        for field, value, message in cases:
+            with self.subTest(field=field):
+                host = self._host("new", "192.0.2.1", "00:00:00:00:00:01")
+                host[field] = value
+                result = view.check_host_params(host)
+                self.assertIsNotNone(result)
+                self.assertEqual(result.json["msg"], message)
+
+    def test_validates_every_optional_host_field(self):
+        valid_host_id = "123e4567-e89b-12d3-a456-426614174000"
+        cases = (
+            ({"host_id": valid_host_id, "status": 5, "host_ip": "not-an-ip"},
+             HostCons.CHECK_HOST_STATUS_TIPS),
+            ({"host_id": valid_host_id, "status": 0, "host_ip": "not-an-ip"},
+             HostCons.CHECK_HOST_IP_TIPS),
+        )
+        for fields, message in cases:
+            with self.subTest(fields=fields):
+                result = view.check_optional_host_fields(fields)
+                self.assertIsNotNone(result)
+                self.assertEqual(result.json["msg"], message)
+
+    def test_treats_null_optional_host_fields_as_absent(self):
+        result = view.check_optional_host_fields(
+            {"host_id": None, "status": None, "host_ip": None})
+        self.assertIsNone(result)
+
     def test_host_name_column_matches_hostname_length_limit(self):
         self.assertEqual(RawHost.__table__.c.host_name.type.length, 63)
 
