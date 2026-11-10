@@ -51,5 +51,13 @@ class TestIPv4Validator(unittest.TestCase):
                 self.assertFalse(_is_valid_ipv4(value))
 
 
+class TestMacValidator(unittest.TestCase):
+
+    def test_accepts_colon_and_hyphen_separators(self):
+        for value in ("AA:BB:CC:DD:EE:FF", "aa-bb-cc-dd-ee-ff"):
+            with self.subTest(value=value):
+                self.assertTrue(_is_valid_mac(value))
+
+
 if __name__ == "__main__":
     unittest.main()
