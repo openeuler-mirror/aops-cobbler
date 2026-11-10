@@ -122,6 +122,13 @@ class TestHostFieldValidation(unittest.TestCase):
                     HostChecker.check_host_status(value),
                     HostCons.CHECK_HOST_STATUS_TIPS)
 
+    def test_check_host_status_rejects_bool_and_float(self):
+        for value in (True, False, 1.0, 3.0):
+            with self.subTest(value=value):
+                self.assert_rejected(
+                    HostChecker.check_host_status(value),
+                    HostCons.CHECK_HOST_STATUS_TIPS)
+
     def test_check_host_mac(self):
         self.assertIsNone(HostChecker.check_host_mac("AA:BB:CC:DD:EE:FF"))
         for value in ("", "not-a-mac", "AA:BB:CC:DD:EE",
