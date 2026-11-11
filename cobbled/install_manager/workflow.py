@@ -297,6 +297,7 @@ _ISCRYPTED_OPTION = re.compile(r"(?<!\S)--iscrypted(?=\s|$)")
 _LITERAL_CRYPT_PREFIX = re.compile(r"(?<!\\)\$[A-Za-z0-9][A-Za-z0-9-]*\$")
 _KICKSTART_SECTION = re.compile(
     r"^%(?:pre|pre-install|post|packages|addon|anaconda|onerror|traceback)(?=\s|$)")
+_KICKSTART_SECTION_END = re.compile(r"^%end(?=\s|$)")
 
 
 def protect_literal_root_password_hashes(kickstart):
@@ -315,7 +316,7 @@ def protect_literal_root_password_hashes(kickstart):
             in_raw_block = True
         elif stripped.strip() == "#end raw":
             in_raw_block = False
-        elif stripped.strip() == "%end":
+        elif _KICKSTART_SECTION_END.match(stripped):
             in_kickstart_section = False
         elif _KICKSTART_SECTION.match(stripped):
             in_kickstart_section = True

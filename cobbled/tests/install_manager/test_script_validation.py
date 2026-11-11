@@ -175,6 +175,31 @@ class TestAutoInstallScriptValidation(unittest.TestCase):
         self.assertIn("%post\nrootpw --iscrypted $6$inside$shell\n%end", result)
         self.assertIn("rootpw --iscrypted \\$6\\$already\\$escaped", result)
 
+    def test_commented_section_end_restores_password_hash_protection(self):
+        for section, body in (("%post # setup", "echo done"),
+                              ("%packages # packages", "bash")):
+            for ending in ("%end # comment\n", "  %end\t# comment\r\n"):
+                with self.subTest(section=section, ending=ending):
+                    prefix = f"{section}\n{body}\n{ending}"
+                    password = "rootpw --iscrypted $6$salt$hash\n"
+                    (self.ks_dir / "test.ks").write_text(
+                        prefix + password, encoding="utf-8")
+
+                    response = self.post()
+
+                    self.assertEqual(response.status_code, 200)
+                    content = self.remote.write_autoinstall_template.call_args.args[1]
+                    # File reads normalize CRLF; the section and comment stay intact.
+                    self.assertIn(prefix.replace("\r\n", "\n") + "#raw\n" + password
+                                  + "#end raw\n", content)
+
+    def test_section_end_requires_a_complete_token(self):
+        for command in ("%ending", "%endless", "%end#comment"):
+            with self.subTest(command=command):
+                source = (f"%post\n{command}\n"
+                          "rootpw --iscrypted $6$inside$shell\n%end\n")
+                self.assertEqual(workflow.protect_literal_root_password_hashes(source), source)
+
     def test_script_is_optional(self):
         for fields in ({}, {"script_name": None}, {"script_name": ""}):
             with self.subTest(fields=fields):
