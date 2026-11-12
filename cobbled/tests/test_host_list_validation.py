@@ -22,7 +22,7 @@ class TestHostListValidation(unittest.TestCase):
         self.client = self.app.test_client()
 
     def assert_invalid_host_list(self, response):
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json, {
             "code": 400,
             "msg": HostCons.CHECK_HOST_LIST_TIPS,
