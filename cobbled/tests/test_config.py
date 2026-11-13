@@ -1,10 +1,12 @@
 """Regression tests for configuration value types."""
 
 import copy
+import re
 import tempfile
 import unittest
 from pathlib import Path
 from types import ModuleType
+from unittest.mock import patch
 
 from cobbled.conf import Config, default_config
 
@@ -69,6 +71,55 @@ class TestConfig(unittest.TestCase):
         config = self.load_config("[cobbler_server]\npasswd=001234\n", default)
         self.assertEqual(config.cobbler_server["PASSWD"], "001234")
         self.assertEqual(config.cobbler_server["USER"], default_config.cobbler_server["USER"])
+
+    def test_init_raises_when_file_missing_without_default(self):
+        with tempfile.TemporaryDirectory() as directory:
+            missing_file = str(Path(directory) / "missing.ini")
+            with self.assertRaisesRegex(
+                RuntimeError, re.escape(f"Configuration file does not exist: {missing_file}")
+            ):
+                Config(missing_file)
+
+    def test_read_config_raises_when_file_missing(self):
+        config = self.load_config("")
+        with tempfile.TemporaryDirectory() as directory:
+            missing_file = str(Path(directory) / "missing.ini")
+            with self.assertRaisesRegex(
+                RuntimeError, re.escape(f"Configuration file does not exist: {missing_file}")
+            ):
+                config.read_config(missing_file)
+
+    def test_load_conf_raises_runtime_error_on_invalid_ini(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config_file = Path(directory) / "broken.ini"
+            config_file.write_text("[host]\ninvalid_line_without_delimiter\n", encoding="utf-8")
+            with self.assertRaisesRegex(
+                RuntimeError, re.escape(f"Failed to load the configuration file: {config_file}")
+            ):
+                Config(str(config_file))
+
+    def test_declared_boolean_options_are_converted(self):
+        with patch.object(default_config, "feature", {"ENABLED": False}, create=True):
+            for raw, expected in (
+                ("true", True),
+                ("True", True),
+                ("1", True),
+                ("yes", True),
+                ("on", True),
+                ("false", False),
+                ("False", False),
+                ("0", False),
+                ("no", False),
+                ("off", False),
+            ):
+                with self.subTest(raw=raw):
+                    config = self.load_config(f"[feature]\nenabled={raw}\n")
+                    actual = config.feature["ENABLED"]
+                    self.assertIs(type(actual), bool)
+                    self.assertIs(actual, expected)
+
+            with self.subTest(raw="invalid_bool"), self.assertRaises(ValueError):
+                self.load_config("[feature]\nenabled=invalid_bool\n")
 
 
 if __name__ == "__main__":
