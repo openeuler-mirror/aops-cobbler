@@ -192,7 +192,7 @@ Main directories:
 | `cobbled/` | API entry point, business modules, database access, and utilities |
 | `cobbled/tests/` | Unit tests, regression tests, and manual integration scripts |
 | `conf/` | Application configuration template |
-| `database/` | Database initialization SQL |
+| `database/` | Database initialization SQL and upgrade scripts for existing deployments (`migrations/`) |
 | `script/` | Post-installation scripts |
 | `container/` | Container deployment example |
 

@@ -192,7 +192,7 @@ sudo yum remove -y aops-cobbler
 | `cobbled/` | API 入口、业务模块、数据库访问及工具函数 |
 | `cobbled/tests/` | 单元测试、回归测试及手动联调脚本 |
 | `conf/` | 业务配置模板 |
-| `database/` | 数据库初始化 SQL |
+| `database/` | 数据库初始化 SQL 及存量库升级脚本（`migrations/`） |
 | `script/` | 操作系统安装后执行的脚本 |
 | `container/` | 容器部署示例 |
 
