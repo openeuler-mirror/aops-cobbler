@@ -59,7 +59,7 @@ BASE_CONFIG_PATH = "/absolute/path/aops-cobbler/conf/"
 mysql -h 127.0.0.1 -P 3306 -u root -p < database/aops-cobbler.sql
 ```
 
-该脚本会创建并使用 `aops` 数据库，创建 `raw_host` 表。如果使用其他数据库名，需同时调整 SQL 脚本和配置中的 `database_name`。为应用账号授予所需表的读写权限，并将连接信息写入 `[mysql]`。
+该脚本会创建并使用 `aops` 数据库，创建 `raw_host` 和 `installation_cleanup` 表。如果使用其他数据库名，需同时调整 SQL 脚本和配置中的 `database_name`。为应用账号授予所需表的读写权限，并将连接信息写入 `[mysql]`。
 
 ### 4. 启动服务
 
@@ -214,7 +214,7 @@ python -m unittest discover -s cobbled/tests -p 'test_*.py' -v
 | `/var/log/aops/uwsgi/aops-cobbler.log` | uWSGI 日志（默认路径） |
 
 - 模块导入失败：确认使用的 Python 环境与安装依赖的环境相同。
-- 数据库连接失败：检查地址、账号、`engine_format`、数据库和 `raw_host` 表。
+- 数据库连接失败：检查地址、账号、`engine_format`、数据库及 `raw_host`、`installation_cleanup` 表。
 - 目录权限或 ISO 挂载失败：检查服务用户权限、磁盘空间及容器挂载权限。
 - Cobbler 导入失败：检查 API 凭据，以及 Cobbler 是否能读取传入的 ISO 挂载路径。
 
