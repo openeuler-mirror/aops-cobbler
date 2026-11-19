@@ -28,6 +28,7 @@ from unittest.mock import MagicMock, patch
 
 from flask import Flask
 
+from cobbled.conf.constant import ISOCons, InstallCons
 from cobbled.util.file_util import FileUtil
 
 with patch.object(FileUtil, 'makedirs'):
@@ -93,6 +94,75 @@ class TestUploadISO(unittest.TestCase):
                                            data={'iso_name': 'demo', 'arch': 'x86_64'}):
             response = view.UploadISO().post()
         self.assertEqual(400, response.status_code)
+
+    def test_invalid_params_return_bad_request(self):
+        invalid_cases = [
+            {'iso_name': 'demo-x86', 'arch': 'x86_64', 'file': (io.BytesIO(b'iso'), 'demo.iso')},
+            {'iso_name': 'demo', 'arch': 'invalid_arch', 'file': (io.BytesIO(b'iso'), 'demo.iso')},
+            {'iso_name': 'demo', 'arch': 'x86_64', 'file': (io.BytesIO(b'iso'), 'demo.txt')},
+        ]
+        for data in invalid_cases:
+            with self.subTest(data=data), \
+                    self.app.test_request_context('/cobbler/uploadISO', method='POST', data=data), \
+                    patch.object(view, 'RemoteServer') as remote_factory:
+                response = view.UploadISO().post()
+            self.assertEqual(400, response.status_code)
+            remote_factory.assert_not_called()
+
+    def test_existing_remote_distro_rejects_upload(self):
+        remote_server = MagicMock()
+        remote_server.get_distro.return_value = {'name': 'demo-x86_64'}
+        remote_factory = MagicMock()
+        remote_factory.get_remote_server.return_value = (remote_server, 'token')
+        with tempfile.TemporaryDirectory() as upload_dir, \
+                self.app.test_request_context('/cobbler/uploadISO', method='POST', data={
+                    'iso_name': 'demo', 'arch': 'x86_64',
+                    'file': (io.BytesIO(b'iso'), 'demo.iso')}), \
+                patch.object(view, 'upload_dir', upload_dir), \
+                patch.object(view, 'RemoteServer', return_value=remote_factory), \
+                patch.object(view.subprocess, 'run') as run:
+            response = view.UploadISO().post()
+        self.assertEqual(400, response.status_code)
+        self.assertEqual(ISOCons.CHECK_ISO_EXITS_TIPS, response.get_json()['msg'])
+        run.assert_not_called()
+        remote_server.background_import.assert_not_called()
+
+    def test_tilde_remote_distro_allows_upload(self):
+        remote_server = MagicMock()
+        remote_server.get_distro.return_value = '~'
+        remote_factory = MagicMock()
+        remote_factory.get_remote_server.return_value = (remote_server, 'token')
+        with tempfile.TemporaryDirectory() as upload_dir, \
+                self.app.test_request_context('/cobbler/uploadISO', method='POST', data={
+                    'iso_name': 'demo', 'arch': 'x86_64',
+                    'file': (io.BytesIO(b'iso'), 'demo.iso')}), \
+                patch.object(view, 'upload_dir', upload_dir), \
+                patch.object(view, 'RemoteServer', return_value=remote_factory), \
+                patch.object(view.os.path, 'ismount', return_value=False), \
+                patch.object(view.os, 'makedirs'), \
+                patch.object(view.subprocess, 'run'):
+            response = view.UploadISO().post()
+        self.assertEqual(200, response.status_code)
+        remote_server.background_import.assert_called_once()
+
+    def test_import_failure_with_unmount_cleanup_failure_preserves_import_error(self):
+        with tempfile.TemporaryDirectory() as upload_dir, \
+                self.app.test_request_context('/cobbler/uploadISO', method='POST', data={
+                    'iso_name': 'demo', 'arch': 'x86_64',
+                    'file': (io.BytesIO(b'iso'), 'demo.iso')}), \
+                patch.object(view, 'upload_dir', upload_dir), \
+                patch.object(view, 'RemoteServer') as factory, \
+                patch.object(view.os.path, 'ismount', return_value=False), \
+                patch.object(view.os, 'makedirs'), \
+                patch.object(view.subprocess, 'run', side_effect=[
+                    MagicMock(), subprocess.CalledProcessError(32, ['umount'])]):
+            remote = MagicMock()
+            factory.return_value.get_remote_server.return_value = (remote, 'token')
+            remote.get_distro.return_value = None
+            remote.background_import.side_effect = RuntimeError('import failed')
+            response = view.UploadISO().post()
+        self.assertEqual(500, response.status_code)
+        self.assertEqual('import failed', response.get_json()['msg'])
 
     def test_same_name_different_architecture_has_separate_files(self):
         with tempfile.TemporaryDirectory() as upload_dir, \
@@ -315,6 +385,70 @@ class TestDeleteISO(unittest.TestCase):
             self.assertEqual(500, response.status_code)
             remote.remove_distro.assert_not_called()
 
+    def test_invalid_params_return_bad_request(self):
+        for payload in [{'iso_name': 'demo-x86', 'arch': 'x86_64'},
+                        {'iso_name': 'demo', 'arch': 'invalid_arch'}]:
+            with self.subTest(payload=payload), \
+                    self.app.test_request_context('/cobbler/deleteISO', method='POST',
+                                                   json=payload), \
+                    patch.object(view, 'RemoteServer') as factory:
+                response = view.DeleteISO().post()
+            self.assertEqual(400, response.status_code)
+            factory.assert_not_called()
+
+    def test_missing_iso_returns_bad_request(self):
+        for target in [None, '~']:
+            with self.subTest(target=target), tempfile.TemporaryDirectory() as upload_dir:
+                remote = MagicMock()
+                remote.get_distro.return_value = target
+                factory = MagicMock()
+                factory.get_remote_server.return_value = (remote, 'token')
+                real_exists = os.path.exists
+                with self.app.test_request_context('/cobbler/deleteISO', method='POST',
+                                                   json={'iso_name': 'demo', 'arch': 'x86_64'}), \
+                        patch.object(view, 'upload_dir', upload_dir), \
+                        patch.object(view, 'RemoteServer', return_value=factory), \
+                        patch.object(view.os.path, 'ismount', return_value=False), \
+                        patch.object(view.os.path, 'exists',
+                                     side_effect=lambda path: False if path.startswith('/mnt/') else real_exists(path)):
+                    response = view.DeleteISO().post()
+                self.assertEqual(400, response.status_code)
+                self.assertEqual(InstallCons.CHECK_ISO_EXITS_TIPS, response.get_json()['msg'])
+                remote.remove_profile.assert_not_called()
+                remote.remove_distro.assert_not_called()
+                remote.sync.assert_not_called()
+
+    def test_deletes_remote_profile_distro_mount_dir_and_checksum_file(self):
+        with tempfile.TemporaryDirectory() as upload_dir:
+            iso_path = os.path.join(upload_dir, 'demo-x86_64.iso')
+            txt_path = os.path.join(upload_dir, 'demo-x86_64.txt')
+            for path, content in [(iso_path, b'iso'), (txt_path, b'sha256')]:
+                with open(path, 'wb') as f:
+                    f.write(content)
+            remote = MagicMock()
+            remote.get_distro.return_value = {'name': 'demo-x86_64'}
+            remote.get_distros.return_value = [{'name': 'demo-x86_64', 'arch': 'x86_64'}]
+            factory = MagicMock()
+            factory.get_remote_server.return_value = (remote, 'token')
+            real_exists = os.path.exists
+            with self.app.test_request_context('/cobbler/deleteISO', method='POST',
+                                               json={'iso_name': 'demo', 'arch': 'x86_64'}), \
+                    patch.object(view, 'upload_dir', upload_dir), \
+                    patch.object(view, 'RemoteServer', return_value=factory), \
+                    patch.object(view.os.path, 'ismount', return_value=False), \
+                    patch.object(view.os.path, 'exists',
+                                 side_effect=lambda path: True if path == '/mnt/demo-x86_64' else real_exists(path)), \
+                    patch.object(view.os, 'rmdir') as rmdir:
+                response = view.DeleteISO().post()
+            self.assertEqual(200, response.status_code)
+            self.assertEqual(ISOCons.DELETE_ISO_SUCCESS_TIPS, response.get_json()['msg'])
+            remote.remove_profile.assert_called_once_with('demo-x86_64', 'token')
+            remote.remove_distro.assert_called_once_with('demo-x86_64', 'token')
+            remote.sync.assert_called_once_with('token')
+            rmdir.assert_called_once_with('/mnt/demo-x86_64')
+            self.assertFalse(os.path.exists(iso_path))
+            self.assertFalse(os.path.exists(txt_path))
+
 
 class TestQueryISO(unittest.TestCase):
     def test_reads_architecture_specific_metadata_and_legacy_fallback(self):
@@ -337,3 +471,12 @@ class TestQueryISO(unittest.TestCase):
             self.assertEqual([3, 6], [item['iso_size'] for item in result])
             self.assertEqual(['x86-hash', 'legacy-hash'],
                              [item['iso_sha256_value'] for item in result])
+
+    def test_remote_error_returns_empty_list(self):
+        remote = MagicMock()
+        remote.get_distros.side_effect = RuntimeError('cobbler unavailable')
+        factory = MagicMock()
+        factory.get_remote_server.return_value = (remote, 'token')
+        with patch.object(view, 'RemoteServer', return_value=factory):
+            result = view.QueryISO().get()
+        self.assertEqual([], result)
