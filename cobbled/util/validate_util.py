@@ -209,7 +209,8 @@ class HostChecker:
     @staticmethod
     def check_bmc_passwd(bmc_passwd):
         # bmc_passwd不能为空，且长度不超过128个字符
-        if not isinstance(bmc_passwd, str) or not bmc_passwd or len(bmc_passwd) > 128:
+        if (not isinstance(bmc_passwd, str) or not bmc_passwd or
+                len(bmc_passwd) > 128):
             return ResUtil.failed(HostCons.CHECK_BMC_PASSWD_TIPS)
 
     @staticmethod

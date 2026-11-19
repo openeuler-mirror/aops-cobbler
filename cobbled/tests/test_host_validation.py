@@ -112,6 +112,13 @@ class TestHostFieldValidation(unittest.TestCase):
                     HostChecker.check_bmc_passwd(value),
                     HostCons.CHECK_BMC_PASSWD_TIPS)
 
+    def test_check_bmc_passwd_rejects_non_string(self):
+        for value in (12345, 12.5, b"secret"):
+            with self.subTest(value=value):
+                self.assert_rejected(
+                    HostChecker.check_bmc_passwd(value),
+                    HostCons.CHECK_BMC_PASSWD_TIPS)
+
     def test_check_host_status(self):
         for value in (0, 1, 2, 3, 4):
             with self.subTest(value=value):
