@@ -30,7 +30,26 @@ from cobbled.database.host import HostProxy
 from cobbled.database.table import Base, RawHost
 from cobbled.install_manager import view
 from cobbled.install_manager.workflow import (
-    InstallationSettings, InstallationWorkflow, render_after_os_installed_script)
+    InstallationSettings, InstallationWorkflow, distribute_ip,
+    render_after_os_installed_script)
+
+
+class TestDistributeIpCache(unittest.TestCase):
+    def test_rechecks_cached_occupied_ip_when_range_is_exhausted(self):
+        occupied = {"192.0.2.100"}
+        proxy = Mock()
+        proxy.query_host_by_host_ip.side_effect = lambda ip: (
+            True, [object()] if ip in occupied else [])
+        cached_occupied = set()
+
+        first = distribute_ip(proxy, [], "192.0.2.100", "192.0.2.101",
+                              occupied_ips=cached_occupied)
+        occupied.clear()  # 数据库中的旧 IP 在两次分配之间被释放
+        second = distribute_ip(proxy, [first], "192.0.2.100", "192.0.2.101",
+                               occupied_ips=cached_occupied)
+
+        self.assertEqual(first, "192.0.2.101")
+        self.assertEqual(second, "192.0.2.100")
 
 
 class TestAfterInstallScriptRendering(unittest.TestCase):
