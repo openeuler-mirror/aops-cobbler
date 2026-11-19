@@ -273,8 +273,28 @@ class GetHostTemplateFile(Resource):
 
 
 def check_host_params(data):
-    return HostChecker.check_host_name(data.get("host_name")) or HostChecker.check_host_mac(
-        data.get("host_mac")) or HostChecker.check_bmc(data)
+    return (HostChecker.check_host_name(data.get("host_name"))
+            or HostChecker.check_host_mac(data.get("host_mac"))
+            or check_optional_host_fields(data)
+            or HostChecker.check_bmc(data))
+
+
+def check_optional_host_fields(data):
+    """Validate host fields the add payload may set besides name, mac and bmc."""
+    # status is numeric: only an absent key/None means "use the column default",
+    # an empty string is not a valid value. The string fields treat "" as absent.
+    checks = (
+        ("host_id", HostChecker.check_host_id, True),
+        ("status", HostChecker.check_host_status, False),
+        ("host_ip", HostChecker.check_host_ip, True),
+    )
+    for field, check, empty_is_absent in checks:
+        value = data.get(field)
+        if value is None or (empty_is_absent and value == ""):
+            continue
+        check_result = check(value)
+        if check_result:
+            return check_result
 
 
 def check_bmc_ip_duplicated(host_proxy, params):
