@@ -58,6 +58,12 @@ class TestMacValidator(unittest.TestCase):
             with self.subTest(value=value):
                 self.assertTrue(_is_valid_mac(value))
 
+    def test_rejects_invalid_mac_addresses(self):
+        for value in ("", "not-a-mac", "AA:BB:CC:DD:EE",
+                      "GG:BB:CC:DD:EE:FF", None):
+            with self.subTest(value=value):
+                self.assertFalse(_is_valid_mac(value))
+
 
 if __name__ == "__main__":
     unittest.main()
