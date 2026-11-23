@@ -232,6 +232,13 @@ class TestHostProxyCRUD(unittest.TestCase):
         self.assertIsNone(row.installation_round)
         self.assertEqual(data["unexpected"], "ignored")
 
+    def test_add_host_generates_uuid_for_empty_host_id(self):
+        """An empty host_id is generated like add_host_batch does."""
+        self.assertTrue(self.proxy.add_host(self.make_host_data(index=1, host_id="")))
+        row = self.proxy.session.query(RawHost).one()
+        self.assertNotEqual(row.host_id, "")
+        self.assertEqual(len(row.host_id), 36)
+
     def test_add_host_rejects_missing_required_fields(self):
         data = self.make_host_data(index=1)
         data.pop("bmc_ip")

@@ -83,6 +83,8 @@ class HostProxy(MysqlProxy):
             bool: True or False
         """
         host_data = filter_host_fields(params, HOST_INSERT_FIELDS, context="add_host")
+        if not host_data.get("host_id"):
+            host_data.pop("host_id", None)
         invalid_fields = sorted(
             field for field in HOST_REQUIRED_FIELDS
             if not isinstance(host_data.get(field), str) or not host_data[field]
