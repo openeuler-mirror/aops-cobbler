@@ -5,13 +5,14 @@ import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import Mock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from flask import Flask
 from flask_restful import Api
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
+from cobbled.conf.constant import HostCons
 from cobbled.database.host import HostProxy
 from cobbled.database.table import Base, RawHost, InstallationCleanup
 from cobbled.install_manager.lifecycle import InstallationConflict, InstallationLifecycle
@@ -336,3 +337,58 @@ class TestInstallationLifecycle(unittest.TestCase):
         self.finish(succeeded=False)
         self.lifecycle.notify(None, self.round_id, '192.0.2.100')
         self.assertEqual(self.host().status, 1)
+
+
+class TestNotifyValidation(unittest.TestCase):
+    def setUp(self):
+        app = Flask(__name__)
+        Api(app).add_resource(view.Notify, '/notify')
+        self.client = app.test_client()
+        self.valid_round_id = '550e8400-e29b-41d4-a716-446655440000'
+
+    def test_rejects_invalid_non_none_bmc_ip(self):
+        invalid_bmc_ips = (
+            '',
+            'not-an-ip',
+            '999.999.999.999',
+            '192.0.2.1/24',
+            '2001:db8::1',
+            123,
+            ['192.0.2.1'],
+        )
+        for bmc_ip in invalid_bmc_ips:
+            with self.subTest(bmc_ip=bmc_ip), patch.object(view, 'HostProxy') as host_proxy:
+                response = self.client.post(
+                    '/notify',
+                    json={'bmc_ip': bmc_ip, 'installation_round': self.valid_round_id},
+                )
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(
+                    response.json,
+                    {'code': 400, 'msg': HostCons.CHECK_BMC_IP_TIPS},
+                )
+                host_proxy.assert_not_called()
+
+    def test_rejects_non_canonical_uuid_round_id(self):
+        non_canonical_rounds = (
+            '550E8400-E29B-41D4-A716-446655440000',
+            '550e8400-e29b-41d4-a716-44665544000A',
+            '550e8400e29b41d4a716446655440000',
+            '{550e8400-e29b-41d4-a716-446655440000}',
+            'urn:uuid:550e8400-e29b-41d4-a716-446655440000',
+        )
+        cases = [('192.0.2.1', round_id) for round_id in non_canonical_rounds]
+        cases.append((None, '550E8400-E29B-41D4-A716-446655440000'))
+        for bmc_ip, round_id in cases:
+            self.assertNotEqual(str(UUID(round_id)), round_id)
+            with self.subTest(bmc_ip=bmc_ip, round_id=round_id), patch.object(view, 'HostProxy') as host_proxy:
+                response = self.client.post(
+                    '/notify',
+                    json={'bmc_ip': bmc_ip, 'installation_round': round_id},
+                )
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(
+                    response.json,
+                    {'code': 400, 'msg': 'installation_round 缺失或格式错误'},
+                )
+                host_proxy.assert_not_called()
