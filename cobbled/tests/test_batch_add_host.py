@@ -154,6 +154,51 @@ class TestBatchAddHost(unittest.TestCase):
             {"host_id": None, "status": None, "host_ip": None})
         self.assertIsNone(result)
 
+    def test_treats_empty_string_host_id_and_host_ip_as_absent(self):
+        cases = (
+            {"host_id": ""},
+            {"host_ip": ""},
+            {"host_id": "", "host_ip": ""},
+            {"host_id": "", "status": 0, "host_ip": ""},
+        )
+        for fields in cases:
+            with self.subTest(fields=fields):
+                self.assertIsNone(view.check_optional_host_fields(fields))
+
+        with patch.object(view.HostChecker, "check_host_id") as mock_check_id, \
+                patch.object(view.HostChecker, "check_host_ip") as mock_check_ip:
+            result = view.check_optional_host_fields({"host_id": "", "host_ip": ""})
+            self.assertIsNone(result)
+            mock_check_id.assert_not_called()
+            mock_check_ip.assert_not_called()
+
+        host = self._host("new", "192.0.2.1", "00:00:00:00:00:01")
+        host["host_id"] = ""
+        host["host_ip"] = ""
+        with patch.object(view.HostChecker, "check_bmc_connection", return_value=None):
+            self.assertIsNone(view.check_host_params(host))
+
+    def test_rejects_empty_string_status(self):
+        cases = (
+            {"status": ""},
+            {"host_id": "", "status": "", "host_ip": ""},
+        )
+        for fields in cases:
+            with self.subTest(fields=fields):
+                result = view.check_optional_host_fields(fields)
+                self.assertIsNotNone(result)
+                self.assertEqual(result.status_code, 400)
+                self.assertEqual(result.json["msg"], HostCons.CHECK_HOST_STATUS_TIPS)
+
+        host = self._host("new", "192.0.2.1", "00:00:00:00:00:01")
+        host["host_id"] = ""
+        host["status"] = ""
+        host["host_ip"] = ""
+        result = view.check_host_params(host)
+        self.assertIsNotNone(result)
+        self.assertEqual(result.status_code, 400)
+        self.assertEqual(result.json["msg"], HostCons.CHECK_HOST_STATUS_TIPS)
+
     def test_host_name_column_matches_hostname_length_limit(self):
         self.assertEqual(RawHost.__table__.c.host_name.type.length, 63)
 
