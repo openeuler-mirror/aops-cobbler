@@ -143,8 +143,10 @@ class QueryKickstart(JsonObjectResource):
         for ks in ks_list:
             if ks_name and ks_name not in ks:
                 continue
+            if not ks.endswith('.ks'):
+                continue
             ks_full_path = os.path.join(ks_dir, ks)
-            if os.path.exists(ks_full_path):
+            if os.path.isfile(ks_full_path):
                 rep_data = {"ks_name": ks,
                             "ks_content": FileUtil.read_file_content(ks_full_path),
                             "ks_address": http_addr + ks}
