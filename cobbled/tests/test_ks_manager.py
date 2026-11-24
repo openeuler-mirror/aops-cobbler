@@ -225,6 +225,26 @@ class TestQueryKickstart(KickstartTestBase):
         ])
 
     @patch("cobbled.ks_manager.view.configuration")
+    def test_query_kickstart_ignores_non_ks_entries(self, mock_config):
+        """Directories and non-.ks files in the ks dir must be ignored."""
+        mock_config.cobbler_client.get.return_value = "127.0.0.1"
+        self._write_ks_file("valid_ks", "valid content", mtime=1000)
+        os.mkdir(os.path.join(self.temp_dir.name, "backup_dir"))
+        with open(os.path.join(self.temp_dir.name, "notes.txt"), "w", encoding="utf-8") as f:
+            f.write("not a kickstart file")
+
+        with APP.test_request_context(json={"ks_name": ""}):
+            result = QueryKickstart().post()
+
+        self.assertEqual(result, [
+            {
+                "ks_name": "valid_ks.ks",
+                "ks_content": "valid content",
+                "ks_address": "http://127.0.0.1/ks/valid_ks.ks",
+            },
+        ])
+
+    @patch("cobbled.ks_manager.view.configuration")
     def test_query_kickstart_filter_by_name(self, mock_config):
         """Test post filters out kickstart files not matching ks_name."""
         mock_config.cobbler_client.get.return_value = "127.0.0.1"
