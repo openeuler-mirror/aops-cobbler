@@ -33,7 +33,9 @@ class AesUtil:
 
     @staticmethod
     def decrypt(ciphertext):
-        # 解密密文
+        # 解密密文；非字符串输入无法解密，返回空串以保证下游类型安全
+        if not isinstance(ciphertext, str):
+            return ''
         try:
             return cipher_suite.decrypt(bytes(ciphertext, 'utf-8')).decode()
         except InvalidToken:

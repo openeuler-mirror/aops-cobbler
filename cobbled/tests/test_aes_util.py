@@ -13,8 +13,10 @@
 Description: unit tests for util/aes_util.py
 """
 import unittest
+from unittest.mock import MagicMock, patch
 
 from cobbled.util.aes_util import AesUtil
+from cobbled.util.validate_util import run_ipmitool
 
 PLAINTEXT = "hello world"
 ENCRYPTED = AesUtil.encrypt(PLAINTEXT)
@@ -58,6 +60,24 @@ class TestAesUtilDecrypt(unittest.TestCase):
         """Test decrypt handles empty string."""
         result = AesUtil.decrypt("")
         self.assertEqual(result, "")
+
+    def test_decrypt_non_string_returns_empty_string(self):
+        """Non-string ciphertext must yield a safe empty string, not raise."""
+        for value in (None, 123, b"raw-bytes"):
+            with self.subTest(value=value):
+                result = AesUtil.decrypt(value)
+                self.assertIsInstance(result, str)
+                self.assertEqual(result, "")
+
+    @patch("cobbled.util.validate_util.subprocess.run")
+    def test_missing_password_reaches_ipmitool_without_type_error(self, mock_run):
+        """A missing bmc password must not crash the ipmitool command path."""
+        mock_run.return_value = MagicMock(returncode=1)
+        host = {"bmc_ip": "192.0.2.1", "bmc_user_name": "test", "bmc_passwd": None}
+        password = AesUtil.decrypt(host.get("bmc_passwd"))
+        self.assertEqual(run_ipmitool(host["bmc_ip"], host["bmc_user_name"], password,
+                                      "power", "status"), 1)
+        self.assertEqual(mock_run.call_args.args[0][8], "")
 
 
 if __name__ == "__main__":
