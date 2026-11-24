@@ -49,6 +49,8 @@ class CobblerInstallationConfiguration:
             if not target or target == '~':
                 return None
             profile = remote.get_profile(distro_name)
+            if not profile or profile == '~':
+                return None
         return cls(remote, token, distro_name, profile)
 
     def prepare_shared(self, ks_content):

@@ -37,6 +37,20 @@ class TestInstallationConfiguration(unittest.TestCase):
                     self.connect, 'missing'))
                 self.assertEqual(self.remote.mock_calls, [call.get_distro('missing')])
 
+    def test_missing_profile_has_no_configuration_or_writes(self):
+        for missing in (None, {}, False, '~'):
+            with self.subTest(missing=missing):
+                self.remote.reset_mock()
+                self.remote.get_distro.return_value = {'name': 'image-x86_64'}
+                self.remote.get_profile.return_value = missing
+                self.assertIsNone(CobblerInstallationConfiguration.for_image(
+                    self.connect, 'image-x86_64'))
+                self.assertEqual(self.remote.mock_calls, [
+                    call.get_distro('image-x86_64'),
+                    call.get_profile('image-x86_64')])
+                self.remote.get_profile.return_value = {
+                    'name': 'image-x86_64', 'autoinstall': '/templates/image.ks'}
+
     def test_shared_configuration_selects_menu_and_synchronizes_last(self):
         # 旧行为：save_profile 的假值不视为失败，异常仍会传播。
         self.remote.save_profile.return_value = False
