@@ -59,7 +59,7 @@ Prepare a MySQL instance, then run the initialization script. Replace the exampl
 mysql -h 127.0.0.1 -P 3306 -u root -p < database/aops-cobbler.sql
 ```
 
-The script creates and selects the `aops` database and creates the `raw_host` table. To use another database name, update both the SQL script and the `database_name` configuration value. Grant the application account the required table read/write permissions and configure its connection under `[mysql]`.
+The script creates and selects the `aops` database and creates the `raw_host` and `installation_cleanup` tables. To use another database name, update both the SQL script and the `database_name` configuration value. Grant the application account the required table read/write permissions and configure its connection under `[mysql]`.
 
 ### 4. Start the Service
 
@@ -214,7 +214,7 @@ Importing application modules in tests may initialize configuration, logs, uploa
 | `/var/log/aops/uwsgi/aops-cobbler.log` | uWSGI log (default path) |
 
 - Import errors: confirm the service uses the Python environment where dependencies were installed.
-- Database connection errors: check the address, credentials, `engine_format`, database, and `raw_host` table.
+- Database connection errors: check the address, credentials, `engine_format`, database, and the `raw_host` and `installation_cleanup` tables.
 - Directory permission or ISO mount errors: check service user permissions, disk space, and container mount permissions.
 - Cobbler import errors: check API credentials and whether Cobbler can read the supplied ISO mount path.
 
