@@ -160,7 +160,7 @@ host_name,host_mac,bmc_ip,bmc_user_name,bmc_passwd
 
 This checks only the API process and route, not database connectivity, Cobbler connectivity, or the full installation workflow. There is no page registered at `/`; a `404` there does not mean the service failed to start.
 
-For further checks, use the host query endpoint to exercise database access and the ISO query endpoint to exercise Cobbler access, and inspect the business result in the response body. API paths are defined in [cobbled/conf/constant.py](./cobbled/conf/constant.py), registration in [cobbled/url.py](./cobbled/url.py), and request parameters in each `*_manager/view.py`.
+For further checks, use the host query endpoint to exercise database access and the ISO query endpoint to exercise Cobbler access, and inspect the business result in the response body. See the [REST API documentation](./docs/api.md) (in Chinese) for endpoint parameters, response schemas, and status definitions; route constants and registrations are in [cobbled/conf/constant.py](./cobbled/conf/constant.py) and [cobbled/url.py](./cobbled/url.py).
 
 ## Container Deployment Example
 
@@ -193,6 +193,7 @@ Main directories:
 | `cobbled/tests/` | Unit tests, regression tests, and manual integration scripts |
 | `conf/` | Application configuration template |
 | `database/` | Database initialization SQL and upgrade scripts for existing deployments (`migrations/`) |
+| `docs/` | REST API reference ([api.md](./docs/api.md)) and design/upgrade documentation |
 | `script/` | Post-installation scripts |
 | `container/` | Container deployment example |
 

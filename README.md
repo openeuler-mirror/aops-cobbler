@@ -160,7 +160,7 @@ host_name,host_mac,bmc_ip,bmc_user_name,bmc_passwd
 
 这一步只验证 API 进程和路由可用，不验证数据库、Cobbler 或完整装机链路。根路径 `/` 没有注册页面，返回 `404` 不代表服务未启动。
 
-进一步验证时，可调用主机查询接口检查数据库访问、调用 ISO 查询接口检查 Cobbler 访问，并检查响应体中的业务结果。接口路径见 [cobbled/conf/constant.py](./cobbled/conf/constant.py)，注册关系见 [cobbled/url.py](./cobbled/url.py)，请求参数见各 `*_manager/view.py`。
+进一步验证时，可调用主机查询接口检查数据库访问、调用 ISO 查询接口检查 Cobbler 访问，并检查响应体中的业务结果。全部接口的请求参数、响应格式及状态说明见 [REST API 文档](./docs/api.md)；路由常量与注册关系分别定义在 [cobbled/conf/constant.py](./cobbled/conf/constant.py) 与 [cobbled/url.py](./cobbled/url.py)。
 
 ## 容器部署示例
 
@@ -193,6 +193,7 @@ sudo yum remove -y aops-cobbler
 | `cobbled/tests/` | 单元测试、回归测试及手动联调脚本 |
 | `conf/` | 业务配置模板 |
 | `database/` | 数据库初始化 SQL 及存量库升级脚本（`migrations/`） |
+| `docs/` | REST API 参考文档（[api.md](./docs/api.md)）及专题设计、升级文档 |
 | `script/` | 操作系统安装后执行的脚本 |
 | `container/` | 容器部署示例 |
 
