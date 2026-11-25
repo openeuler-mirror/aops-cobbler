@@ -16,12 +16,14 @@ Author:
 Description: test install manager.
 """
 
+import os
 import subprocess
 import tempfile
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, Mock, call, patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -29,6 +31,7 @@ from sqlalchemy.orm import sessionmaker
 from cobbled.database.host import HostProxy
 from cobbled.database.table import Base, RawHost
 from cobbled.install_manager import view
+from cobbled.install_manager.lifecycle import InstallationConflict
 from cobbled.install_manager.workflow import (
     InstallationSettings, InstallationWorkflow, distribute_ip,
     render_after_os_installed_script)
@@ -203,6 +206,177 @@ class TestHostScheduler(unittest.TestCase):
         self.assertEqual(failed_count, 11)
         self.assertEqual(remote_server.remove_system.call_count, 11)
         self.assertEqual(remote_server.sync_dhcp.call_count, 11)
+
+
+class TestCheckInstallationStatus(unittest.TestCase):
+
+    @staticmethod
+    def _make_host(host_id="1", host_name="host-1", round_id="round-1",
+                   started_at=None, update_time=None):
+        now = datetime.now()
+        started_at = started_at if started_at is not None else now - timedelta(minutes=10)
+        update_time = update_time if update_time is not None else started_at
+        return SimpleNamespace(
+            host_id=host_id,
+            host_name=host_name,
+            installation_round=round_id,
+            installation_started_at=started_at,
+            update_time=update_time,
+        )
+
+    @staticmethod
+    def _write_log(directory, host_name, host_id, mtime_offset_seconds=0):
+        log_path = Path(directory, f"{host_name}-{host_id}.log")
+        log_path.write_text("installing...\n", encoding="utf-8")
+        target_mtime = (datetime.now() - timedelta(seconds=mtime_offset_seconds)).timestamp()
+        os.utime(log_path, (target_mtime, target_mtime))
+        return log_path
+
+    def test_query_failure_logs_error_and_stops(self):
+        host_proxy = Mock()
+        host_proxy.session = Mock()
+        host_proxy.query_hosts_by_status_batch.return_value = (False, [])
+        lifecycle = Mock()
+
+        with patch.object(view, "InstallationLifecycle", return_value=lifecycle), \
+                patch.object(view, "LOGGER") as logger:
+            view._check_installation_status(host_proxy)
+
+        host_proxy.query_hosts_by_status_batch.assert_called_once_with(
+            3, view.HOST_SCHEDULER_BATCH_SIZE, None, None)
+        logger.error.assert_called_once_with(
+            "Query installing hosts failed during scheduled task.")
+        lifecycle.finish.assert_not_called()
+
+    def test_empty_hosts_exits_cleanly(self):
+        host_proxy = Mock()
+        host_proxy.session = Mock()
+        host_proxy.query_hosts_by_status_batch.return_value = (True, [])
+        lifecycle = Mock()
+
+        with patch.object(view, "InstallationLifecycle", return_value=lifecycle), \
+                patch.object(view, "LOGGER") as logger:
+            view._check_installation_status(host_proxy)
+
+        host_proxy.query_hosts_by_status_batch.assert_called_once_with(
+            3, view.HOST_SCHEDULER_BATCH_SIZE, None, None)
+        logger.error.assert_not_called()
+        lifecycle.finish.assert_not_called()
+
+    def test_skips_host_installing_less_than_300_seconds(self):
+        started_at = datetime.now() - timedelta(seconds=120)
+        host = self._make_host(started_at=started_at)
+        host_proxy = Mock()
+        host_proxy.session = Mock()
+        host_proxy.query_hosts_by_status_batch.return_value = (True, [host])
+        lifecycle = Mock()
+
+        with tempfile.TemporaryDirectory() as log_dir, \
+                patch.object(view, "os_install_log_dir", log_dir), \
+                patch.object(view, "os_installed_time", 30), \
+                patch.object(view, "InstallationLifecycle", return_value=lifecycle):
+            view._check_installation_status(host_proxy)
+
+        lifecycle.finish.assert_not_called()
+
+    def test_keeps_installing_when_log_recently_updated_and_within_limit(self):
+        started_at = datetime.now() - timedelta(seconds=600)
+        host = self._make_host(started_at=started_at)
+        host_proxy = Mock()
+        host_proxy.session = Mock()
+        host_proxy.query_hosts_by_status_batch.return_value = (True, [host])
+        lifecycle = Mock()
+
+        with tempfile.TemporaryDirectory() as log_dir:
+            self._write_log(log_dir, host.host_name, host.host_id, mtime_offset_seconds=30)
+            with patch.object(view, "os_install_log_dir", log_dir), \
+                    patch.object(view, "os_installed_time", 30), \
+                    patch.object(view, "InstallationLifecycle", return_value=lifecycle):
+                view._check_installation_status(host_proxy)
+
+        lifecycle.finish.assert_not_called()
+
+    def test_marks_failed_when_log_mtime_exceeds_120_seconds(self):
+        started_at = datetime.now() - timedelta(seconds=600)
+        host = self._make_host(started_at=started_at)
+        host_proxy = Mock()
+        host_proxy.session = Mock()
+        host_proxy.query_hosts_by_status_batch.return_value = (True, [host])
+        lifecycle = Mock()
+
+        with tempfile.TemporaryDirectory() as log_dir:
+            self._write_log(log_dir, host.host_name, host.host_id, mtime_offset_seconds=180)
+            with patch.object(view, "os_install_log_dir", log_dir), \
+                    patch.object(view, "os_installed_time", 30), \
+                    patch.object(view, "InstallationLifecycle", return_value=lifecycle):
+                view._check_installation_status(host_proxy)
+
+        lifecycle.finish.assert_called_once_with(
+            "1", "round-1", succeeded=False, expected_started_at=started_at)
+
+    def test_marks_failed_when_total_duration_exceeds_os_installed_time(self):
+        started_at = datetime.now() - timedelta(minutes=31)
+        host = self._make_host(started_at=started_at)
+        host_proxy = Mock()
+        host_proxy.session = Mock()
+        host_proxy.query_hosts_by_status_batch.return_value = (True, [host])
+        lifecycle = Mock()
+
+        with tempfile.TemporaryDirectory() as log_dir:
+            self._write_log(log_dir, host.host_name, host.host_id, mtime_offset_seconds=10)
+            with patch.object(view, "os_install_log_dir", log_dir), \
+                    patch.object(view, "os_installed_time", 30), \
+                    patch.object(view, "InstallationLifecycle", return_value=lifecycle):
+                view._check_installation_status(host_proxy)
+
+        lifecycle.finish.assert_called_once_with(
+            "1", "round-1", succeeded=False, expected_started_at=started_at)
+
+    def test_logs_error_and_skips_legacy_host_without_installation_round(self):
+        started_at = datetime.now() - timedelta(seconds=600)
+        legacy_host = self._make_host(
+            host_id="1", host_name="legacy-host", round_id=None, started_at=started_at)
+        normal_host = self._make_host(
+            host_id="2", host_name="normal-host", round_id="round-2", started_at=started_at)
+        host_proxy = Mock()
+        host_proxy.session = Mock()
+        host_proxy.query_hosts_by_status_batch.return_value = (True, [legacy_host, normal_host])
+        lifecycle = Mock()
+
+        with tempfile.TemporaryDirectory() as log_dir, \
+                patch.object(view, "os_install_log_dir", log_dir), \
+                patch.object(view, "os_installed_time", 30), \
+                patch.object(view, "InstallationLifecycle", return_value=lifecycle), \
+                patch.object(view, "LOGGER") as logger:
+            view._check_installation_status(host_proxy)
+
+        logger.error.assert_called_once_with(
+            "Legacy installation requires manual cleanup: %s", "1")
+        lifecycle.finish.assert_called_once_with(
+            "2", "round-2", succeeded=False, expected_started_at=started_at)
+
+    def test_ignores_installation_conflict_and_continues(self):
+        started_at = datetime.now() - timedelta(seconds=600)
+        host_1 = self._make_host(
+            host_id="1", host_name="host-1", round_id="round-1", started_at=started_at)
+        host_2 = self._make_host(
+            host_id="2", host_name="host-2", round_id="round-2", started_at=started_at)
+        host_proxy = Mock()
+        host_proxy.session = Mock()
+        host_proxy.query_hosts_by_status_batch.return_value = (True, [host_1, host_2])
+        lifecycle = Mock()
+        lifecycle.finish.side_effect = [InstallationConflict("new round started"), None]
+
+        with tempfile.TemporaryDirectory() as log_dir, \
+                patch.object(view, "os_install_log_dir", log_dir), \
+                patch.object(view, "os_installed_time", 30), \
+                patch.object(view, "InstallationLifecycle", return_value=lifecycle):
+            view._check_installation_status(host_proxy)
+
+        self.assertEqual(lifecycle.finish.call_args_list, [
+            call("1", "round-1", succeeded=False, expected_started_at=started_at),
+            call("2", "round-2", succeeded=False, expected_started_at=started_at),
+        ])
 
 
 if __name__ == "__main__":
