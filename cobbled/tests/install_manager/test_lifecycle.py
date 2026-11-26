@@ -338,6 +338,44 @@ class TestInstallationLifecycle(unittest.TestCase):
         self.lifecycle.notify(None, self.round_id, '192.0.2.100')
         self.assertEqual(self.host().status, 1)
 
+    def test_begin_raises_conflict_and_rolls_back_when_host_missing(self):
+        with patch.object(self.session, 'rollback', wraps=self.session.rollback) as rollback:
+            with self.assertRaisesRegex(InstallationConflict, '主机不存在'):
+                self.lifecycle.begin('missing-host')
+        rollback.assert_called_once()
+
+    def test_finish_rejects_mismatched_cleanup_task_round(self):
+        stale_round = str(uuid4())
+        self.session.add(InstallationCleanup(
+            host_id='host-1', round_id=stale_round,
+            system_name='stale-system', state='pending',
+            failures=0, next_attempt_at=self.now))
+        self.session.commit()
+        with patch.object(self.session, 'rollback', wraps=self.session.rollback) as rollback:
+            with self.assertRaisesRegex(InstallationConflict, '清理任务与安装轮次不匹配'):
+                self.finish()
+        rollback.assert_called_once()
+        self.assertEqual(self.host().status, 3)
+        self.assertEqual(self.task().round_id, stale_round)
+
+    def test_notify_rejects_empty_round_id(self):
+        for round_id in (None, ''):
+            with self.subTest(round_id=round_id):
+                with self.assertRaisesRegex(InstallationConflict, '安装轮次缺失或不匹配'):
+                    self.lifecycle.notify('192.0.2.1', round_id, '192.0.2.100')
+        self.assertEqual(self.host().status, 3)
+        self.assertEqual(self.session.query(InstallationCleanup).count(), 0)
+
+    def test_clean_one_rolls_back_and_reraises_on_commit_failure(self):
+        self.finish()
+        with patch.object(self.session, 'commit', side_effect=RuntimeError('database commit failed')), \
+                patch.object(self.session, 'rollback', wraps=self.session.rollback) as rollback:
+            with self.assertRaisesRegex(RuntimeError, 'database commit failed'):
+                self.lifecycle._clean_one('host-1', self.connect)
+        rollback.assert_called_once()
+        self.assertEqual(self.task().state, 'pending')
+        self.assertEqual(self.task().next_attempt_at, self.now)
+
 
 class TestNotifyValidation(unittest.TestCase):
     def setUp(self):
