@@ -23,7 +23,7 @@ from sqlalchemy.pool import QueuePool
 
 from cobbled.database.host import HostProxy
 from cobbled.database.proxy import MysqlProxy
-from cobbled.database.table import Base, RawHost
+from cobbled.database.table import Base, InstallationCleanup, RawHost
 
 HOST_ID = "host-001"
 HOST_NAME = "test-host"
@@ -159,6 +159,93 @@ class TestHostProxyCRUD(unittest.TestCase):
         self.assertEqual(data["total_count"], 1)
         self.assertEqual(data["host_infos"][0]["host_id"],
                          self.host_id_of(2))
+
+    def test_query_hosts_with_host_id_filter(self):
+        """Test query_hosts filters results by host_id."""
+        self.proxy.insert(RawHost, self.make_host_data(index=1))
+        self.proxy.insert(RawHost, self.make_host_data(index=2))
+        params = {"host_id": self.host_id_of(1), "host_name": None,
+                  "bmc_ip": None, "page_no": 1, "page_size": 10}
+        ok, data = self.proxy.query_hosts(params)
+        self.assertTrue(ok)
+        self.assertEqual(data["total_count"], 1)
+        self.assertEqual(len(data["host_infos"]), 1)
+        self.assertEqual(data["host_infos"][0]["host_id"],
+                         self.host_id_of(1))
+
+    def test_query_hosts_with_host_name_filter(self):
+        """Test query_hosts filters results by host_name."""
+        self.proxy.insert(RawHost, self.make_host_data(index=1))
+        self.proxy.insert(RawHost, self.make_host_data(index=2))
+        params = {"host_id": None, "host_name": "host-2",
+                  "bmc_ip": None, "page_no": 1, "page_size": 10}
+        ok, data = self.proxy.query_hosts(params)
+        self.assertTrue(ok)
+        self.assertEqual(data["total_count"], 1)
+        self.assertEqual(len(data["host_infos"]), 1)
+        self.assertEqual(data["host_infos"][0]["host_id"],
+                         self.host_id_of(2))
+        self.assertEqual(data["host_infos"][0]["host_name"], "host-2")
+
+    def test_query_hosts_serializes_created_time_and_next_attempt_at(self):
+        """Test query_hosts serializes non-null timestamps with isoformat."""
+        created_time = datetime(2026, 3, 1, 12, 30, 45)
+        next_attempt_at = datetime(2026, 3, 1, 13, 0, 0)
+        self.proxy.insert(RawHost, self.make_host_data(
+            index=1,
+            created_time=created_time,
+            installation_round="round-1",
+        ))
+        self.proxy.session.add(InstallationCleanup(
+            host_id=self.host_id_of(1),
+            round_id="round-1",
+            system_name="sys-1",
+            state="retrying",
+            failures=2,
+            next_attempt_at=next_attempt_at,
+            last_error="timeout",
+        ))
+        self.proxy.session.commit()
+
+        params = {"host_id": None, "host_name": None, "bmc_ip": None,
+                  "page_no": 1, "page_size": 10}
+        ok, data = self.proxy.query_hosts(params)
+        self.assertTrue(ok)
+        self.assertEqual(len(data["host_infos"]), 1)
+        info = data["host_infos"][0]
+        self.assertEqual(info["created_time"], created_time.isoformat())
+        self.assertEqual(info["installation_round"], "round-1")
+        self.assertEqual(info["cleanup"], {
+            "state": "retrying",
+            "failures": 2,
+            "next_attempt_at": next_attempt_at.isoformat(),
+            "last_error": "timeout",
+        })
+
+    def test_query_hosts_returns_false_when_select_fails(self):
+        """Test query_hosts returns early when select() fails."""
+        self.proxy.insert(RawHost, self.make_host_data(index=1))
+        params = {"host_id": None, "host_name": None, "bmc_ip": None,
+                  "page_no": 1, "page_size": 10}
+        with patch.object(self.proxy, "select", return_value=(False, [])) as mock_select:
+            ok, data = self.proxy.query_hosts(params)
+        self.assertFalse(ok)
+        self.assertEqual(data, {"host_infos": [], "total_count": 0, "total_page": 0})
+        mock_select.assert_called_once()
+
+    def test_query_hosts_cleanup_query_db_error_rolls_back(self):
+        """Test query_hosts rolls back and returns False on cleanup SQLAlchemyError."""
+        host = RawHost(**self.make_host_data(index=1))
+        self.proxy.session = MagicMock()
+        self.proxy.session.query.side_effect = SQLAlchemyError("cleanup query failed")
+        params = {"host_id": None, "host_name": None, "bmc_ip": None,
+                  "page_no": 1, "page_size": 10}
+        with patch.object(self.proxy, "count", return_value=(True, 1)), \
+                patch.object(self.proxy, "select", return_value=(True, [host])):
+            ok, data = self.proxy.query_hosts(params)
+        self.assertFalse(ok)
+        self.assertEqual(data, {"host_infos": [], "total_count": 0, "total_page": 0})
+        self.proxy.session.rollback.assert_called_once()
 
     def test_query_hosts_page_beyond_last_page(self):
         """Test query_hosts returns an empty page with totals set."""
