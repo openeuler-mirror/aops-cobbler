@@ -75,6 +75,84 @@ class TestBatchAddHost(unittest.TestCase):
         self.assertEqual([item["host_name"] for item in results], ["both-duplicate", "invalid"])
         self.assertEqual(results[0]["reason"], HostCons.HOST_MAC_DUPLICATED_TIPS)
 
+    def test_marks_duplicate_bmc_ip_within_same_batch(self):
+        hosts = [
+            self._host("first", "192.0.2.10", "00:00:00:00:00:01"),
+            self._host("batch-ip", "192.0.2.10", "00:00:00:00:00:02"),
+        ]
+        proxy = MagicMock()
+        proxy.query_existing_identities.return_value = (True, [])
+        proxy.add_host_batch.return_value = True
+
+        response = self._post(hosts, proxy, encrypt=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["msg"], HostCons.BATCH_ADD_HOST_SUCCESS_TIPS)
+        inserted = proxy.add_host_batch.call_args.args[0]
+        self.assertEqual([item.host_name for item in inserted], ["first"])
+        results = {item["host_name"]: item for item in response.json["data"]["result"]}
+        self.assertEqual(results["first"]["result"], "succeed")
+        self.assertEqual(results["first"]["reason"], "")
+        self.assertEqual(results["batch-ip"]["result"], "failed")
+        self.assertEqual(results["batch-ip"]["reason"], HostCons.BMC_IP_DUPLICATED_TIPS)
+
+    def test_returns_400_in_original_order_when_identity_query_fails(self):
+        hosts = [
+            self._host("valid-first", "192.0.2.1", "00:00:00:00:00:01"),
+            self._host("invalid-middle", "192.0.2.2", "00:00:00:00:00:02"),
+            self._host("valid-last", "192.0.2.3", "00:00:00:00:00:03"),
+        ]
+        proxy = MagicMock()
+        proxy.query_existing_identities.return_value = (False, [])
+        invalid = MagicMock()
+        invalid.json = {"msg": HostCons.CHECK_HOST_NAME_TIPS}
+
+        response = self._post(
+            hosts,
+            proxy,
+            check_side_effect=lambda host: invalid if host["host_name"] == "invalid-middle" else None)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json["msg"], HostCons.BATCH_ADD_HOST_FAILED_TIPS)
+        proxy.add_host_batch.assert_not_called()
+        results = response.json["data"]["result"]
+        self.assertEqual(
+            [item["host_name"] for item in results],
+            ["valid-first", "invalid-middle", "valid-last"])
+        self.assertEqual(results[0]["result"], "failed")
+        self.assertEqual(results[0]["reason"], HostCons.QUERY_HOST_FAILED_TIPS)
+        self.assertEqual(results[1]["result"], "failed")
+        self.assertEqual(results[1]["reason"], HostCons.CHECK_HOST_NAME_TIPS)
+        self.assertEqual(results[2]["result"], "failed")
+        self.assertEqual(results[2]["reason"], HostCons.QUERY_HOST_FAILED_TIPS)
+
+    def test_returns_400_and_marks_checked_hosts_failed_when_add_host_batch_fails(self):
+        hosts = [
+            self._host("valid", "192.0.2.1", "00:00:00:00:00:01"),
+            self._host("invalid", "192.0.2.2", "00:00:00:00:00:02"),
+        ]
+        proxy = MagicMock()
+        proxy.query_existing_identities.return_value = (True, [])
+        proxy.add_host_batch.return_value = False
+        invalid = MagicMock()
+        invalid.json = {"msg": HostCons.CHECK_HOST_NAME_TIPS}
+
+        response = self._post(
+            hosts,
+            proxy,
+            encrypt=True,
+            check_side_effect=lambda host: invalid if host["host_name"] == "invalid" else None)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json["msg"], HostCons.BATCH_ADD_HOST_FAILED_TIPS)
+        proxy.add_host_batch.assert_called_once()
+        results = response.json["data"]["result"]
+        self.assertEqual([item["host_name"] for item in results], ["invalid", "valid"])
+        self.assertEqual(results[0]["result"], "failed")
+        self.assertEqual(results[0]["reason"], HostCons.CHECK_HOST_NAME_TIPS)
+        self.assertEqual(results[1]["result"], "failed")
+        self.assertEqual(results[1]["reason"], HostCons.ADD_HOST_FAILED_TIPS)
+
     def test_database_lookup_executes_one_query_and_normalizes_mac(self):
         engine = create_engine("sqlite:///:memory:")
         Base.metadata.create_all(engine)
