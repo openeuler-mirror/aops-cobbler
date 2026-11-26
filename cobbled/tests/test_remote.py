@@ -15,9 +15,14 @@ Description: unit tests for server/remote.py
 import unittest
 from unittest.mock import patch, MagicMock
 
-from cobbled.server.remote import RemoteServer
+from cobbled.server.remote import (
+    RemoteServer,
+    TimeoutSafeTransport,
+    TimeoutTransport,
+)
 
 SERVER_URL = "http://192.0.2.10/cobbler_api"
+HTTPS_SERVER_URL = "https://192.0.2.10/cobbler_api"
 SERVER_USER = "cobbler"
 SERVER_PASSWD = "cobbler"
 
@@ -95,14 +100,56 @@ class TestRemoteServerConnection(unittest.TestCase):
 
 
 class TestRemoteTimeout(unittest.TestCase):
+    """Tests for TimeoutTransport, TimeoutSafeTransport, and timeout selection."""
+
     def test_http_and_https_connections_have_timeout(self):
-        from cobbled.server.remote import TimeoutTransport, TimeoutSafeTransport
+        """Test HTTP and HTTPS transports pass the configured timeout."""
         for transport, target in ((TimeoutTransport, "HTTPConnection"),
                                   (TimeoutSafeTransport, "HTTPSConnection")):
             with self.subTest(transport=transport), patch(
                     "cobbled.server.remote.http.client." + target) as connection:
                 transport(30).make_connection("example.test")
                 self.assertEqual(connection.call_args.kwargs["timeout"], 30)
+
+    def test_make_connection_reuses_cached_connection_for_same_host(self):
+        """Test consecutive make_connection calls for the same host reuse _connection."""
+        for transport_cls, target in ((TimeoutTransport, "HTTPConnection"),
+                                      (TimeoutSafeTransport, "HTTPSConnection")):
+            with self.subTest(transport=transport_cls), patch(
+                    "cobbled.server.remote.http.client." + target) as connection:
+                transport = transport_cls(30)
+                first_conn = transport.make_connection("example.test")
+                second_conn = transport.make_connection("example.test")
+                self.assertIs(first_conn, second_conn)
+                connection.assert_called_once()
+
+    def test_get_remote_server_selects_timeout_transport_by_scheme(self):
+        """Test RemoteServer(timeout=30) picks HTTP or HTTPS timeout transport."""
+        cases = (
+            (SERVER_URL, TimeoutTransport),
+            (HTTPS_SERVER_URL, TimeoutSafeTransport),
+        )
+        for url, expected_transport in cases:
+            with self.subTest(url=url), \
+                    patch("cobbled.server.remote.configuration") as mock_config, \
+                    patch("cobbled.server.remote.xmlrpc.client.Server") as mock_server:
+                mock_config.cobbler_server.get.side_effect = [
+                    url, SERVER_USER, SERVER_PASSWD
+                ]
+                mock_remote = MagicMock()
+                mock_remote.login.return_value = "token-123"
+                mock_server.return_value = mock_remote
+
+                server = RemoteServer(timeout=30)
+                result = server.get_remote_server()
+
+                self.assertEqual(result, (mock_remote, "token-123"))
+                mock_server.assert_called_once()
+                args, kwargs = mock_server.call_args
+                self.assertEqual(args, (url,))
+                self.assertIs(type(kwargs["transport"]), expected_transport)
+                self.assertEqual(kwargs["transport"].timeout, 30)
+                mock_remote.login.assert_called_once_with(SERVER_USER, SERVER_PASSWD)
 
 
 if __name__ == "__main__":
