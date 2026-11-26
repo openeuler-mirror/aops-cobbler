@@ -28,6 +28,7 @@ from unittest.mock import MagicMock, Mock, call, patch
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from cobbled.conf.constant import InstallCons
 from cobbled.database.host import HostProxy
 from cobbled.database.table import Base, RawHost
 from cobbled.install_manager import view
@@ -67,6 +68,25 @@ class TestAfterInstallScriptRendering(unittest.TestCase):
         self.assertIn("prefix='16'", rendered_script)
         self.assertNotIn("s_u_b_n_e_t_m_a_s_k", rendered_script)
         self.assertIn("configured_gateway=''", rendered_script)
+
+    def test_invalid_install_rpm_raises_value_error(self):
+        template = "server=127.0.0.1:8888 gw=g_a_t_e_w_a_y prefix=s_u_b_n_e_t_m_a_s_k rpms=r_p_m_s"
+        invalid_rpms = [
+            123,
+            ["vim"],
+            "a" * 257,
+            ",".join(f"pkg{i}" for i in range(11)),
+            "-vim",
+            "vim;id",
+            "vim git",
+        ]
+        for invalid_rpm in invalid_rpms:
+            with self.subTest(install_rpm=invalid_rpm):
+                with self.assertRaises(ValueError) as ctx:
+                    render_after_os_installed_script(
+                        template, "10.10.192.1", 8888, prefix=24,
+                        install_rpm=invalid_rpm)
+                self.assertEqual(str(ctx.exception), InstallCons.CHECK_RPM_NAME_TIPS)
 
     def test_gateway_in_allocatable_pool_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
